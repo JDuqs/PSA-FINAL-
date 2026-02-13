@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSA Gate Pass Dashboard</title>
+    
+    <!-- CSS Dependencies -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Export Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- SUPABASE SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        :root { 
+            --psa-blue: #003399; 
+            --psa-dark-blue: #002266;
+            --psa-yellow: #ffcc00; 
+            --psa-yellow-hover: #e6b800;
+            --bg-gray: #f4f7f9; 
+            --sidebar-width: 260px;
+        }
+        
+        body { 
+            background-color: var(--bg-gray); 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            overflow: hidden; /* Handled by SPA layout */
+            height: 100vh;
+            margin: 0;
+        }
+
+        /* --- APP SCREEN STYLES (SPA Layout) --- */
+        #app-screen {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--psa-dark-blue);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 100;
+            flex-shrink: 0;
+            transition: all 0.3s;
+        }
+        .sidebar-brand {
+            padding: 20px;
+            background-color: var(--psa-blue);
+            border-bottom: 4px solid var(--psa-yellow);
+            text-align: center;
+        }
+        .sidebar-brand img {
+            height: 55px;
+            margin-bottom: 10px;
+            filter: drop-shadow(0 0 2px rgba(255,255,255,0.2));
+        }
+        .sidebar-nav {
+            padding: 20px 0;
+            flex: 1;
+            overflow-y: auto;
+        }
+        .nav-item-btn {
+            display: flex;
+            align-items: center;
+            padding: 14px 20px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 4px solid transparent;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .nav-item-btn:hover {
+            background-color: rgba(255,255,255,0.05);
+            color: white;
+        }
+        .nav-item-btn.active {
+            background-color: rgba(255, 204, 0, 0.1);
+            color: var(--psa-yellow);
+            border-left-color: var(--psa-yellow);
+        }
+        .nav-item-btn i { width: 25px; text-align: center; margin-right: 12px; font-size: 1.1rem; }
+        
+        .sidebar-footer {
+            padding: 15px 20px;
+            background-color: rgba(0,0,0,0.2);
+            font-size: 0.85rem;
+        }
+
+        /* MAIN CONTENT AREA */
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: var(--bg-gray);
+        }
+        
+        .topbar {
+            height: 70px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 30px;
+            z-index: 10;
+        }
+
+        .view-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+        
+        .app-view { display: none; }
+        .app-view.active-view { display: block; animation: fadeIn 0.3s ease-in-out; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* UI COMPONENTS */
+        .section-card { 
+            background: white; 
+            padding: 25px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03); 
+            margin-bottom: 25px; 
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        .section-title { 
+            font-weight: 700; 
+            color: var(--psa-blue); 
+            margin-bottom: 20px; 
+            text-transform: uppercase; 
+            border-left: 5px solid var(--psa-yellow); 
+            padding-left: 15px; 
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .btn-primary { background-color: var(--psa-blue); border: none; font-weight: bold; }
+        .btn-primary:hover { background-color: var(--psa-dark-blue); }
+        .btn-psa-yellow { background-color: var(--psa-yellow); color: var(--psa-blue); font-weight: 700; border: none; }
+        .btn-psa-yellow:hover { background-color: var(--psa-yellow-hover); }
+        
+        .clock-container { background-color: var(--psa-blue); padding: 15px; border-radius: 10px; border: 2px solid var(--psa-yellow); text-align: center; color: white; }
+        .clock-time { font-family: 'Courier New', monospace; font-size: 2.2rem; font-weight: bold; color: var(--psa-yellow); }
+        
+        .table { font-size: 0.85rem; vertical-align: middle; }
+        .sticky-header th { position: sticky; top: 0; z-index: 10; }
+        
+        .user-badge {
+            background: rgba(0, 51, 153, 0.08);
+            padding: 8px 18px;
+            border-radius: 20px;
+            color: var(--psa-blue);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            border: 1px solid rgba(0, 51, 153, 0.15);
+        }
+
+        /* EXPORT TOOLBAR AT THE TOP */
+        .export-toolbar {
+            background: linear-gradient(to right, #ffffff, #f8f9fa);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e0e5ec;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .export-toolbar-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--psa-dark-blue);
+            margin-bottom: 10px;
+        }
+
+        /* MODALS */
+        .modal-content { border: none; border-radius: 15px; }
+        .modal-header { border-bottom: none; padding-bottom: 0; }
+        .modal-footer { border-top: none; justify-content: center; padding-bottom: 25px; }
+        .confirm-icon { font-size: 3rem; color: var(--psa-blue); margin-bottom: 15px; }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+        .badge-pulse { animation: pulse-red 2s infinite; }
+        
+        .nav-pills .nav-link { color: #555; font-weight: 600; margin-right: 5px; border-radius: 8px; padding: 10px 20px;}
+        .nav-pills .nav-link.active { background-color: var(--psa-blue); color: white; }
+    </style>
+</head>
+<body>
+
+    <div id="app-screen">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <nav class="sidebar">
+            <div class="sidebar-brand">
+                <img src="PSA.png" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Philippine_Statistics_Authority_%28PSA%29_logo.svg/1024px-Philippine_Statistics_Authority_%28PSA%29_logo.svg.png'" alt="PSA">
+                <div class="fw-bold text-uppercase small" style="letter-spacing: 1px;">Gate Pass System</div>
+            </div>
+            
+            <div class="sidebar-nav">
+                <a class="nav-item-btn active" data-target="view-issuance">
+                    <i class="fa fa-desktop"></i> Issuance Desk
+                </a>
+                <a class="nav-item-btn" data-target="view-approvals">
+                    <i class="fa fa-check-to-slot"></i> Workflow Approvals
+                </a>
+                <a class="nav-item-btn" data-target="view-records">
+                    <i class="fa fa-folder-open"></i> Gate Pass Records
+                </a>
+            </div>
+
+            <div class="sidebar-footer">
+                <a href="admin.html" id="adminPanelBtn" class="nav-item-btn text-warning p-0 mb-3" style="display:none;">
+                    <i class="fa fa-user-shield text-warning"></i> Manage Users
+                </a>
+                <a class="nav-item-btn text-danger p-0" id="logoutBtn">
+                    <i class="fa fa-power-off text-danger"></i> Secure Logout
+                </a>
+            </div>
+        </nav>
+
+        <!-- MAIN CONTENT WRAPPER -->
+        <div class="main-wrapper">
+            
+            <!-- TOP BAR -->
+            <header class="topbar">
+                <h4 class="m-0 fw-bold text-dark" id="topbar-title">Issuance Desk</h4>
+                <div id="currentUserDisplay" class="user-badge">
+                    <!-- Injected by JS -->
+                </div>
+            </header>
+
+            <!-- DYNAMIC VIEWS CONTAINER -->
+            <div class="view-container">
+                
+                <!-- ============================================== -->
+                <!-- VIEW 1: ISSUANCE DESK                          -->
+                <!-- ============================================== -->
+                <div id="view-issuance" class="app-view active-view">
+                    <div class="row">
+                        <!-- Left Col: Form -->
+                        <div class="col-lg-8">
+                            <div class="section-card">
+                                <div class="section-title">
+                                    <span id="issuanceTitle">New Gate Pass Request</span>
+                                </div>
+                                
+                                <ul class="nav nav-pills mb-4 border-bottom pb-2" id="issueTabs" role="tablist">
+                                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#manualEntry">Manual Entry</button></li>
+                                    <li class="nav-item" id="bulkImportNav" style="display:none;"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#bulkImport">Bulk Inventory Import</button></li>
+                                </ul>
+
+                                <div class="tab-content">
+                                    <!-- Manual Entry Form -->
+                                    <div class="tab-pane fade show active" id="manualEntry">
+                                        <form id="issuanceForm">
+                                            <div class="row g-3 mb-4">
+                                                <div class="col-md-6"><label class="small fw-bold text-secondary">Borrower's Name*</label><input type="text" id="borrower" class="form-control" required></div>
+                                                <div class="col-md-6"><label class="small fw-bold text-secondary">Guard Out</label><input type="text" id="guardOut" class="form-control" placeholder="Optional for Request"></div>
+                                                <div class="col-md-4"><label class="small fw-bold text-secondary">Destination*</label><input type="text" id="destination" class="form-control" required></div>
+                                                <div class="col-md-4"><label class="small fw-bold text-secondary">Project*</label><input type="text" id="project" class="form-control"></div>
+                                                <div class="col-md-4"><label class="small fw-bold text-secondary">Due Date*</label><input type="date" id="dueDate" class="form-control" required></div>
+                                            </div>
+                                            
+                                            <div class="p-4 bg-light border rounded mb-3 border-2 shadow-sm">
+                                                <label class="fw-bold mb-3 text-primary"><i class="fa fa-box-open me-2"></i>Add Equipment to Request</label>
+                                                <div class="row g-2 align-items-end">
+                                                    <div class="col-md-3">
+                                                        <label class="small fw-bold">Serial No.*</label>
+                                                        <div class="input-group">
+                                                            <input type="text" id="serial" class="form-control border-primary" placeholder="Scan or Search">
+                                                            <button class="btn btn-primary" type="button" id="btnOpenInventoryLookup"><i class="fa fa-search"></i></button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-3"><label class="small fw-bold">Property No.</label><input type="text" id="propertyNum" class="form-control"></div>
+                                                    <div class="col-md-3"><label class="small fw-bold">Description*</label><input type="text" id="desc" class="form-control"></div>
+                                                    <div class="col-md-3"><label class="small fw-bold">Asset Tag</label><input type="text" id="asset" class="form-control"></div>
+                                                    <div class="col-12 mt-3"><button type="button" id="addToCartBtn" class="btn btn-psa-yellow w-100 fw-bold py-2 shadow-sm"><i class="fa fa-plus me-1"></i> ADD ITEM TO CART</button></div>
+                                                </div>
+                                            </div>
+                                        </form>
+
+                                        <table class="table table-sm table-bordered shadow-sm bg-white">
+                                            <thead class="table-light"><tr><th>Serial</th><th>Property No.</th><th>Description</th><th>Asset</th><th class="text-center">Action</th></tr></thead>
+                                            <tbody id="cartTableBody"><tr><td colspan="5" class="text-center text-muted py-3">Cart is empty</td></tr></tbody>
+                                        </table>
+                                        <button id="issueBtn" class="btn btn-success w-100 py-3 fw-bold shadow mt-2" style="font-size: 1.1rem;" disabled>SUBMIT REQUEST</button>
+                                    </div>
+
+                                    <!-- Bulk Import -->
+                                    <div class="tab-pane fade" id="bulkImport">
+                                        <div class="alert alert-info border-info shadow-sm">
+                                            <i class="fa fa-info-circle me-2"></i> Upload an Excel file (.xlsx) with columns: <b>serial_no</b>, <b>property_no</b>, <b>description</b>, <b>asset_no</b>.
+                                        </div>
+                                        <input type="file" id="inventoryFile" class="form-control form-control-lg mb-3" accept=".xlsx">
+                                        <button id="processImportBtn" class="btn btn-info text-white fw-bold w-100 py-2 mb-3 shadow-sm"><i class="fa fa-magnifying-glass me-2"></i> PREVIEW EXCEL DATA</button>
+                                        
+                                        <div id="importPreview" class="table-responsive border rounded mb-3 shadow-sm" style="max-height: 300px; display:none;">
+                                            <table class="table table-sm table-striped mb-0 bg-white">
+                                                <thead class="table-dark sticky-header">
+                                                    <tr><th>Serial</th><th>Property No.</th><th>Description</th><th>Asset</th></tr>
+                                                </thead>
+                                                <tbody id="importBody"></tbody>
+                                            </table>
+                                        </div>
+                                        <button id="saveBulkBtn" class="btn btn-success w-100 py-2 fw-bold shadow" style="display:none;"><i class="fa fa-upload me-2"></i> SAVE TO MASTER INVENTORY</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Col: Utilities -->
+                        <div class="col-lg-4">
+                            <div class="section-card text-center pb-4">
+                                <h6 class="fw-bold text-muted text-uppercase mb-3">System Time</h6>
+                                <div class="clock-container shadow">
+                                    <div id="clockDate" class="fw-bold opacity-75">---</div>
+                                    <div id="clockTime" class="clock-time">00:00:00</div>
+                                </div>
+                            </div>
+
+                            <div id="overdueAlert" class="alert alert-success text-center fw-bold shadow-sm">ALL ON SCHEDULE</div>
+
+                            <div class="section-card" id="returnSection" style="display: none;">
+                                <div class="section-title mb-3"><span>Process Return</span></div>
+                                <label class="small fw-bold text-secondary">Serial No.*</label>
+                                <input type="text" id="returnSerial" class="form-control mb-3" placeholder="Scan or select from table">
+                                <label class="small fw-bold text-secondary">Guard Name (In)*</label>
+                                <input type="text" id="guardIn" class="form-control mb-3" placeholder="Receiving Guard">
+                                <button id="returnBtn" class="btn btn-warning w-100 py-2 fw-bold shadow-sm"><i class="fa fa-undo me-2"></i> SUBMIT RETURN</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- ============================================== -->
+                <!-- VIEW 2: WORKFLOW APPROVALS                     -->
+                <!-- ============================================== -->
+                <div id="view-approvals" class="app-view">
+                    <div class="section-card">
+                        <div class="section-title"><span>Review & Approvals</span></div>
+                        
+                        <ul class="nav nav-pills mb-4 border-bottom pb-3" id="approvalTabs" role="tablist">
+                            <li class="nav-item" id="nav-stn1" style="display:none;">
+                                <button class="nav-link position-relative" data-bs-toggle="pill" data-bs-target="#stn1Pane">
+                                    Station 1: Property
+                                    <span id="badgeStation1" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none shadow">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" id="nav-stn2" style="display:none;">
+                                <button class="nav-link position-relative" data-bs-toggle="pill" data-bs-target="#stn2Pane">
+                                    Station 2: Inspection
+                                    <span id="badgeStation2" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none shadow">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" id="nav-stn3" style="display:none;">
+                                <button class="nav-link position-relative" data-bs-toggle="pill" data-bs-target="#stn3Pane">
+                                    Station 3: OIC
+                                    <span id="badgeStation3" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none shadow">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" id="nav-stn4" style="display:none;">
+                                <button class="nav-link position-relative" data-bs-toggle="pill" data-bs-target="#stn4Pane">
+                                    Station 4: For Release
+                                    <span id="releasingCountBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-info text-dark fw-bold d-none shadow">0</span>
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content mt-3">
+                            <div class="tab-pane fade" id="stn1Pane">
+                                <div class="alert alert-secondary border-secondary shadow-sm"><i class="fa fa-warehouse me-2"></i> Verify initial property availability.</div>
+                                <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-secondary"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Project</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="station1TableBody"></tbody></table></div>
+                            </div>
+                            <div class="tab-pane fade" id="stn2Pane">
+                                <div class="alert alert-info border-info shadow-sm"><i class="fa fa-magnifying-glass me-2"></i> Inspect items for condition and specifications.</div>
+                                <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-info"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Project</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="station2TableBody"></tbody></table></div>
+                            </div>
+                            <div class="tab-pane fade" id="stn3Pane">
+                                <div class="alert alert-warning border-warning shadow-sm"><i class="fa fa-user-tie me-2"></i> Final approval by Supervising Statistical Specialist / OIC.</div>
+                                <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-warning"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Project</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="station3TableBody"></tbody></table></div>
+                            </div>
+                            <div class="tab-pane fade" id="stn4Pane">
+                                <div class="alert alert-primary border-primary shadow-sm"><i class="fa fa-box-open me-2"></i> Verify physical release to guard/borrower.</div>
+                                <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-primary"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="releasingTableBody"></tbody></table></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============================================== -->
+                <!-- VIEW 3: GATE PASS RECORDS (OUT / HISTORY)      -->
+                <!-- ============================================== -->
+                <div id="view-records" class="app-view">
+                    
+                    <!-- HIGH VISIBILITY EXPORT TOOLBAR (TOP OF PAGE) -->
+                    <div class="export-toolbar" id="exportToolbarContainer" style="display: none !important;">
+                        <div>
+                            <div class="export-toolbar-title"><i class="fa fa-file-export me-2"></i>Export Documents</div>
+                            <div class="d-flex align-items-center gap-2">
+                                <button id="btnSelectAllUnified" class="btn btn-outline-primary bg-white fw-bold"><i class="fa fa-check-double me-1"></i> Select All</button>
+                                <button id="btnDeselectAllUnified" class="btn btn-outline-secondary bg-white"><i class="fa fa-xmark me-1"></i> Deselect</button>
+                                <span id="unifiedSelectionCount" class="badge bg-primary px-3 py-2 ms-2 fs-6 shadow-sm">0 Selected</span>
+                            </div>
+                        </div>
+                        <div>
+                            <button id="openUnifiedExportModalBtn" class="btn btn-success fw-bold shadow-lg px-4 py-3" style="font-size: 1.15rem;">
+                                <i class="fa fa-download me-2"></i> GENERATE EXPORT
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="section-card">
+                        <!-- Records Tabs -->
+                        <ul class="nav nav-pills mb-4 border-bottom pb-3" id="recordsTabs" role="tablist">
+                            <li class="nav-item">
+                                <button class="nav-link active px-4" data-bs-toggle="pill" data-bs-target="#activeRecordsTab" data-context="active">
+                                    <i class="fa fa-clock-rotate-left me-2"></i> Active Passes (OUT)
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link px-4" data-bs-toggle="pill" data-bs-target="#historyRecordsTab" data-context="history">
+                                    <i class="fa fa-box-archive me-2"></i> History Log (RETURNED)
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content">
+                            <!-- Active Records -->
+                            <div class="tab-pane fade show active" id="activeRecordsTab">
+                                <div class="d-flex justify-content-end mb-3">
+                                    <div class="input-group shadow-sm" style="max-width: 350px;">
+                                        <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-muted"></i></span>
+                                        <input type="text" id="tableSearch" class="form-control border-start-0" placeholder="Search Active Batches...">
+                                    </div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-bordered align-middle shadow-sm bg-white" id="activeTable">
+                                        <thead class="table-dark">
+                                            <tr><th width="40" class="text-center">Sel</th><th>Gate Pass ID</th><th>Borrower</th><th>Project</th><th>Date Issued</th><th>Items</th><th>Due Date</th><th>Status</th></tr>
+                                        </thead>
+                                        <tbody id="activeTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- History Records -->
+                            <div class="tab-pane fade" id="historyRecordsTab">
+                                <div class="d-flex justify-content-end mb-3">
+                                    <div class="input-group shadow-sm" style="max-width: 350px;">
+                                        <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-muted"></i></span>
+                                        <input type="text" id="historySearchInput" class="form-control border-start-0" placeholder="Search History Batches...">
+                                    </div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-bordered align-middle shadow-sm bg-white" id="historyTable">
+                                        <thead class="table-secondary">
+                                            <tr><th width="40" class="text-center">Sel</th><th>Gate Pass ID</th><th>Borrower</th><th>Project</th><th>Date Returned</th><th>Items</th><th>Guard In</th><th>Status</th></tr>
+                                        </thead>
+                                        <tbody id="historyTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ========================================== -->
+    <!-- MODALS                                     -->
+    <!-- ========================================== -->
+
+    <!-- CUSTOM CONFIRMATION MODAL -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+          <div class="modal-body text-center p-5">
+            <div class="confirm-icon"><i class="fa fa-circle-question"></i></div>
+            <h4 class="fw-bold mb-3 text-dark" id="confirmTitle">Confirm Action</h4>
+            <p class="text-muted mb-4 fs-5" id="confirmText">Are you sure you want to proceed?</p>
+            <div class="d-flex justify-content-center gap-3">
+                <button type="button" class="btn btn-light px-4 py-2 border fw-bold text-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-4 py-2 fw-bold shadow-sm" id="confirmBtnYes">Confirm Action</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPORT OPTIONS MODAL -->
+    <div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+          <div class="modal-header bg-light border-bottom">
+            <h5 class="modal-title fw-bold text-primary"><i class="fa fa-download me-2"></i> Select Document Type</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body text-center p-4">
+            <p class="text-muted mb-4" id="exportModalTitle">Ready to export documents.</p>
+            <div class="d-grid gap-3">
+                <button id="btnExportGatePass" class="btn btn-danger py-3 fw-bold text-start ps-4 shadow-sm rounded-3"><i class="fa fa-file-pdf me-3 fs-5"></i> Official Gate Pass (PDF)</button>
+                <button id="btnExportTransmittal" class="btn btn-primary py-3 fw-bold text-start ps-4 shadow-sm rounded-3" style="background-color: #003399;"><i class="fa fa-file-export me-3 fs-5"></i> Transmittal Form (PDF)</button>
+                <button id="btnExportAckReceipt" class="btn btn-warning py-3 fw-bold text-dark text-start ps-4 shadow-sm rounded-3"><i class="fa fa-file-signature me-3 fs-5"></i> Acknowledgement Receipt (PDF)</button>
+                <button id="btnExportExcel" class="btn btn-success py-3 fw-bold text-start ps-4 shadow-sm rounded-3"><i class="fa fa-file-excel me-3 fs-5"></i> Export Data to Excel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INVENTORY LOOKUP MODAL -->
+    <div class="modal fade" id="inventoryLookupModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="fa fa-box-open me-2"></i>Select Item from Inventory</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body bg-light p-4">
+                    <!-- Bulk Auto-Add Container -->
+                    <div id="inventoryBulkSection" class="bg-white p-3 mb-4 rounded border shadow-sm">
+                        <label class="small fw-bold text-success mb-2"><i class="fa fa-layer-group me-1"></i>SMART BULK AUTO-ADD</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-sm-6">
+                                <select id="bulkCategorySelect" class="form-select border-success">
+                                    <option value="" selected>Any Category...</option>
+                                    <option value="Tablets">Tablets</option>
+                                    <option value="Laptops">Laptops</option>
+                                    <option value="Desktops">Desktops/CPUs</option>
+                                    <option value="Monitors">Monitors</option>
+                                    <option value="Peripherals">Peripherals</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <input type="text" id="bulkBrandInput" class="form-control border-success" placeholder="Specific Brand (e.g. Samsung)">
+                            </div>
+                        </div>
+                        <div class="input-group mt-2">
+                            <span class="input-group-text bg-white border-success fw-bold">Qty:</span>
+                            <input type="number" id="bulkQtyInput" class="form-control border-success text-center" value="1" min="1" max="50" style="max-width: 100px;">
+                            <button id="btnBulkAdd" class="btn btn-success fw-bold px-4"><i class="fa fa-plus me-1"></i> Auto-Add</button>
+                        </div>
+                        <div id="bulkStatusMsg" class="small text-muted mt-2 fst-italic">Select a type, optionally type a brand, and choose quantity.</div>
+                    </div>
+
+                    <div class="mb-3 d-flex gap-2 align-items-center">
+                        <span class="fw-bold text-secondary text-nowrap"><i class="fa fa-filter me-1"></i>Filter Search:</span>
+                        <select id="inventoryCategoryFilter" class="form-select border-primary shadow-sm" style="max-width: 250px;">
+                            <option value="All">All Categories</option>
+                            <option value="Tablets">Tablets</option>
+                            <option value="Laptops">Laptops</option>
+                            <option value="Desktops">Desktops & CPUs</option>
+                            <option value="Monitors">Monitors</option>
+                            <option value="Peripherals">Peripherals</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group mb-3 sticky-top shadow-sm" style="top: -24px; z-index: 1020;">
+                        <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-primary"></i></span>
+                        <input type="text" id="inventorySearchInput" class="form-control border-start-0 py-2" placeholder="Type to search by Serial, Description, or Asset Tag..." autocomplete="off">
+                    </div>
+                    
+                    <div class="table-responsive bg-white rounded border shadow-sm">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light text-muted">
+                                <tr><th>Serial No.</th><th>Description</th><th>Asset Tag</th><th></th></tr>
+                            </thead>
+                            <tbody id="inventoryLookupBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI & DATE SCRIPTS -->
+    <script>
+        // 1. Sidebar Standalone Navigation Logic
+        document.addEventListener('DOMContentLoaded', () => {
+            const navButtons = document.querySelectorAll('.sidebar-nav .nav-item-btn[data-target]');
+            const views = document.querySelectorAll('.app-view');
+            const topbarTitle = document.getElementById('topbar-title');
+
+            navButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    // Remove active from all buttons
+                    navButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active'); // Set clicked as active
+
+                    // Hide all views
+                    views.forEach(view => {
+                        view.classList.remove('active-view');
+                        view.style.display = 'none';
+                    });
+
+                    // Show target view
+                    const targetId = btn.getAttribute('data-target');
+                    const targetView = document.getElementById(targetId);
+                    if (targetView) {
+                        targetView.style.display = 'block';
+                        // Small timeout to allow display:block to apply before animating opacity
+                        setTimeout(() => {
+                            targetView.classList.add('active-view');
+                        }, 10);
+                    }
+
+                    // Update Topbar Title
+                    if (topbarTitle) {
+                        topbarTitle.innerText = btn.innerText.trim();
+                    }
+                });
+            });
+        });
+
+        // 2. Secure Date Logic
+        (async function secureDate() {
+            const dateInput = document.getElementById('dueDate');
+            let serverDate = new Date().toISOString().split('T')[0];
+
+            try {
+                const response = await fetch('https://worldtimeapi.org/api/timezone/Asia/Manila');
+                if (response.ok) {
+                    const data = await response.json();
+                    serverDate = data.datetime.split('T')[0];
+                }
+            } catch (e) {
+                console.warn("Time API failed, falling back to local.");
+            }
+
+            if(dateInput) {
+                dateInput.setAttribute('min', serverDate);
+                dateInput.addEventListener('change', () => {
+                    if (dateInput.value < serverDate) {
+                        alert("Invalid Date: You cannot select a date in the past.");
+                        dateInput.value = serverDate;
+                    }
+                });
+            }
+        })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
