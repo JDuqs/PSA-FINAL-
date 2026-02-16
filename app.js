@@ -1144,11 +1144,17 @@ function loadAllRecords(user) {
                 return q;
             };
 
-            const { data: aData } = await buildQuery('OUT').order('time_out', { ascending: false }).limit(500);
-            if(aData) {
-                activeData = aData;
-                populateReturnSelector(); // Populate dropdown when active data loads
+            // ACTIVE DATA FETCH - FIXED ERROR HANDLING FOR RETURN SELECTOR
+            const { data: aData, error: aError } = await buildQuery('OUT').order('time_out', { ascending: false }).limit(500);
+            
+            if (aError) {
+                console.error("Error loading active batches:", aError);
+                activeData = []; 
+            } else {
+                activeData = aData || [];
             }
+            // Always attempt to populate selector to clear the "Loading..." state
+            populateReturnSelector(); 
 
             const { data: hData } = await buildQuery('RETURNED').order('time_return', { ascending: false }).limit(500);
             if(hData) historyData = hData;
@@ -1251,20 +1257,27 @@ function populateReturnSelector() {
         return acc;
     }, {});
 
-    const currentSignature = JSON.stringify(Object.keys(batches).sort());
-    if (currentSignature === lastSelectorSignature) return;
+    const batchKeys = Object.keys(batches);
+    
+    // Prevent flickering: only update if data changed OR if still showing "Loading..."
+    const currentSignature = JSON.stringify(batchKeys.sort());
+    if (currentSignature === lastSelectorSignature && !selector.options[0]?.text.includes("Loading")) return;
     lastSelectorSignature = currentSignature;
 
     const previousVal = selector.value;
-    selector.innerHTML = '<option value="" selected disabled>Select Batch to Return...</option>';
     
-    // Sort batches by ID descending (newest first)
-    Object.values(batches).sort((a,b) => b.id.localeCompare(a.id)).forEach(b => {
-        const opt = document.createElement('option');
-        opt.value = b.id;
-        opt.text = `${b.id} - ${b.borrower}`;
-        selector.appendChild(opt);
-    });
+    if (batchKeys.length === 0) {
+        selector.innerHTML = '<option value="" selected disabled>No Active Batches Found</option>';
+    } else {
+        selector.innerHTML = '<option value="" selected disabled>Select Batch to Return...</option>';
+        // Sort batches by ID descending (newest first)
+        Object.values(batches).sort((a,b) => b.id.localeCompare(a.id)).forEach(b => {
+            const opt = document.createElement('option');
+            opt.value = b.id;
+            opt.text = `${b.id} - ${b.borrower}`;
+            selector.appendChild(opt);
+        });
+    }
 
     if (previousVal && batches[previousVal]) selector.value = previousVal;
 }
