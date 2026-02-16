@@ -347,11 +347,13 @@
 
                             <div class="section-card" id="returnSection" style="display: none;">
                                 <div class="section-title mb-3"><span>Process Return</span></div>
-                                <label class="small fw-bold text-secondary">Serial No.*</label>
-                                <input type="text" id="returnSerial" class="form-control mb-3" placeholder="Scan or select from table">
+                                <label class="small fw-bold text-secondary">Gate Pass ID (Batch)*</label>
+                                <select id="returnBatchID" class="form-select mb-3">
+                                    <option value="" selected disabled>Loading active batches...</option>
+                                </select>
                                 <label class="small fw-bold text-secondary">Guard Name (In)*</label>
                                 <input type="text" id="guardIn" class="form-control mb-3" placeholder="Receiving Guard">
-                                <button id="returnBtn" class="btn btn-warning w-100 py-2 fw-bold shadow-sm"><i class="fa fa-undo me-2"></i> SUBMIT RETURN</button>
+                                <button id="returnBtn" class="btn btn-warning w-100 py-2 fw-bold shadow-sm"><i class="fa fa-undo me-2"></i> SUBMIT BATCH RETURN</button>
                             </div>
                         </div>
                     </div>

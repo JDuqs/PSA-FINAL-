@@ -39,6 +39,7 @@ let lastReleasingSignature = "";
 let lastActiveSignature = "";
 let lastHistorySignature = "";
 let lastRejectedSignature = ""; // Prevent unnecessary UI renders for notifications
+let lastSelectorSignature = "";
 window.tempExportItems = null; // Store temp single batch for immediate exports
 
 let paginationState = {
@@ -1144,7 +1145,10 @@ function loadAllRecords(user) {
             };
 
             const { data: aData } = await buildQuery('OUT').order('time_out', { ascending: false }).limit(500);
-            if(aData) activeData = aData;
+            if(aData) {
+                activeData = aData;
+                populateReturnSelector(); // Populate dropdown when active data loads
+            }
 
             const { data: hData } = await buildQuery('RETURNED').order('time_return', { ascending: false }).limit(500);
             if(hData) historyData = hData;
@@ -1220,7 +1224,7 @@ function loadAllRecords(user) {
     window.refreshTableData = () => {
         lastStation1Signature = ""; lastStation2Signature = ""; lastStation3Signature = "";
         lastReleasingSignature = ""; lastActiveSignature = ""; lastHistorySignature = "";
-        lastRejectedSignature = "";
+        lastRejectedSignature = ""; lastSelectorSignature = ""; // Reset selector signature
         fetchRecords();
         updateBorrowedStatus();
     };
@@ -1233,6 +1237,36 @@ function loadAllRecords(user) {
             updateBorrowedStatus();
         }
     }, 5000);
+}
+
+function populateReturnSelector() {
+    const selector = document.getElementById('returnBatchID');
+    if (!selector) return;
+
+    // Filter activeData to get unique batches
+    const batches = activeData.reduce((acc, item) => {
+        if (!acc[item.unique_id]) {
+            acc[item.unique_id] = { id: item.unique_id, borrower: item.borrower };
+        }
+        return acc;
+    }, {});
+
+    const currentSignature = JSON.stringify(Object.keys(batches).sort());
+    if (currentSignature === lastSelectorSignature) return;
+    lastSelectorSignature = currentSignature;
+
+    const previousVal = selector.value;
+    selector.innerHTML = '<option value="" selected disabled>Select Batch to Return...</option>';
+    
+    // Sort batches by ID descending (newest first)
+    Object.values(batches).sort((a,b) => b.id.localeCompare(a.id)).forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.text = `${b.id} - ${b.borrower}`;
+        selector.appendChild(opt);
+    });
+
+    if (previousVal && batches[previousVal]) selector.value = previousVal;
 }
 
 // ==========================================
@@ -1717,7 +1751,7 @@ function renderTable(type) {
 
             const itemRows = group.items.map(item => `
                 <tr>
-                    <td class="text-primary fw-bold ps-4" style="width:20%; cursor:pointer;" onclick="window.selectRow('${item.serial}')"><i class="fa fa-arrow-turn-up me-1 small"></i><small>${item.serial}</small></td>
+                    <td class="text-primary fw-bold ps-4" style="width:20%; cursor:pointer;" onclick="window.selectRow('${group.id}')"><i class="fa fa-arrow-turn-up me-1 small"></i><small>${item.serial}</small></td>
                     <td style="width:20%"><small>${item.description}</small></td>
                     <td style="width:10%"><small>${item.asset_no || '-'}</small></td>
                     <td style="width:10%"><small class="text-muted">${item.property_no || '-'}</small></td>
@@ -1822,20 +1856,48 @@ function initSearchListeners() {
 
 document.getElementById('returnBtn')?.addEventListener('click', async () => {
     if (currentUser.email !== ADMIN_ROLES.STATION_4) return alert("Unauthorized.");
-    const s = document.getElementById('returnSerial').value;
-    const g = document.getElementById('guardIn').value;
-    if (!s || !g) return alert("Fill fields");
+    
+    const batchId = document.getElementById('returnBatchID').value.trim();
+    const g = document.getElementById('guardIn').value.trim();
+    
+    if (!batchId || !g) return alert("Please fill in both the Gate Pass ID and Guard Name.");
 
-    const { data } = await supabase.from('gate_passes').select('id').eq('serial', s).eq('status', 'OUT').single();
-    if (!data) return alert("Item not found or already returned.");
+    // Verify if the batch exists and is currently 'OUT'
+    const { data, error } = await supabase
+        .from('gate_passes')
+        .select('unique_id')
+        .eq('unique_id', batchId)
+        .eq('status', 'OUT');
 
-    if (!await showConfirm("Return", `Return ${s}?`)) return;
+    if (error || !data || data.length === 0) {
+        return alert("Batch ID not found or items are not currently marked as 'OUT'.");
+    }
 
-    await supabase.from('gate_passes').update({ status: 'RETURNED', guard_in: g, time_return: new Date().toISOString() }).eq('id', data.id);
-    document.getElementById('returnSerial').value="";
-    if(window.refreshTableData) window.refreshTableData();
+    if (!await showConfirm("Batch Return", `Return all ${data.length} items for Batch ${batchId}?`)) return;
+
+    try {
+        const { error: updateError } = await supabase
+            .from('gate_passes')
+            .update({ 
+                status: 'RETURNED', 
+                guard_in: g, 
+                time_return: new Date().toISOString() 
+            })
+            .eq('unique_id', batchId)
+            .eq('status', 'OUT');
+
+        if (updateError) throw updateError;
+
+        alert(`Batch ${batchId} returned successfully!`);
+        document.getElementById('returnBatchID').value = "";
+        document.getElementById('guardIn').value = "";
+        if (window.refreshTableData) window.refreshTableData();
+        
+    } catch (e) {
+        alert("Return failed: " + e.message);
+    }
 });
-window.selectRow = (s) => document.getElementById('returnSerial').value = s;
+window.selectRow = (batchId) => document.getElementById('returnBatchID').value = batchId;
 
 // ==========================================
 // F. UTILS & UNIFIED EXPORT LOGIC
