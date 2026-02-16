@@ -39,7 +39,6 @@ let lastReleasingSignature = "";
 let lastActiveSignature = "";
 let lastHistorySignature = "";
 let lastRejectedSignature = ""; // Prevent unnecessary UI renders for notifications
-let lastSelectorSignature = "";
 window.tempExportItems = null; // Store temp single batch for immediate exports
 
 let paginationState = {
@@ -47,7 +46,7 @@ let paginationState = {
     history: { page: 1, limit: 10, filter: '' }
 };
 
-console.log("App.js loaded. Single-Session Enforcement & Inventory Stats Active.");
+console.log("App.js loaded. Single-Session Enforcement Active.");
 
 // ==========================================
 // SPA VIEW NAVIGATION LOGIC
@@ -220,28 +219,37 @@ async function handleLogin(e) {
         if (error) throw error;
 
         // --- SINGLE DEVICE ENFORCEMENT START ---
+        // Generate a new, unique token for THIS login
         const sessionToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
         
+        // 1. Try to update the existing user record
         const { error: updateError, count } = await supabase
             .from('users')
             .update({ session_token: sessionToken })
             .eq('uid', data.user.id)
             .select('uid', { count: 'exact' });
 
+        // 2. If no record was updated (e.g., this is an Admin who doesn't have a 'users' table row yet),
+        //    we MUST create a row for them to track the session.
         if (updateError || count === 0) {
-            await supabase.from('users').upsert({
+            console.warn("User row missing, creating one for session tracking...");
+            const { error: upsertError } = await supabase.from('users').upsert({
                 uid: data.user.id,
                 email: email,
                 session_token: sessionToken,
-                name: email.split('@')[0].toUpperCase(),
+                name: email.split('@')[0].toUpperCase(), // Default name
                 role: isAnyAdmin(email) ? 'admin' : 'user',
                 approved: true
             }, { onConflict: 'email' });
+            
+            if (upsertError) console.error("Session tracking setup failed:", upsertError);
         }
 
+        // 3. Save this token locally to identify THIS device
         localStorage.setItem('session_token', sessionToken);
         // --- SINGLE DEVICE ENFORCEMENT END ---
 
+        // Check if regular user needs approval
         if (!isAnyAdmin(email)) {
             const { data: userData, error: userError } = await supabase
                 .from('users')
@@ -276,6 +284,7 @@ if (loginForm) loginForm.addEventListener('submit', handleLogin);
 
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
+        // Clear session token on logout so we don't accidentally trigger alerts
         localStorage.removeItem('session_token'); 
         await supabase.auth.signOut();
         window.location.href = 'index.html';
@@ -283,7 +292,7 @@ if (logoutBtn) {
 }
 
 // ==========================================
-// B. REGISTRATION & APPROVAL
+// B. REGISTRATION & APPROVAL (signup.html / admin.html)
 // ==========================================
 const requestBtn = document.getElementById('requestBtn');
 const signupForm = document.getElementById('signupForm');
@@ -394,10 +403,12 @@ async function initDashboard(user) {
     const issueBtn = document.getElementById('issueBtn');
     const guardInput = document.getElementById('guardOut');
     
+    // UI Panels/Features
     const returnSection = document.getElementById('returnSection'); 
     const adminPanelBtn = document.getElementById('adminPanelBtn');
     const exportToolbar = document.getElementById('exportToolbarContainer');
     
+    // Stations
     const t1 = document.getElementById('nav-stn1');
     const t2 = document.getElementById('nav-stn2');
     const t3 = document.getElementById('nav-stn3');
@@ -406,6 +417,7 @@ async function initDashboard(user) {
     if (!user || !user.email) return;
 
     // --- INSTANT SESSION CHECKER (REALTIME) ---
+    // This listens for DB changes and logs you out instantly if token changes
     try {
         const channel = supabase.channel('session_monitor_' + user.id)
             .on(
@@ -421,17 +433,22 @@ async function initDashboard(user) {
                 }
             )
             .subscribe();
-    } catch (err) { console.warn("Realtime session monitoring failed."); }
+    } catch (err) {
+        console.warn("Realtime session monitoring failed (RLS might block it). Falling back to polling.");
+    }
 
+    // --- FALLBACK SESSION CHECKER (POLLING) ---
     const checkSession = async () => {
         const localToken = localStorage.getItem('session_token');
         if (!localToken) return; 
 
+        // Query by UID first, fallback to Email
         let query = supabase.from('users').select('session_token');
         if (user.id) query = query.eq('uid', user.id);
         else query = query.eq('email', user.email);
         
         const { data: userSession, error } = await query.single();
+        // If row is missing (error), we can't enforce session yet, but handleLogin logic fixes this now.
         if (error || !userSession) return;
 
         if (userSession.session_token && userSession.session_token !== localToken) {
@@ -442,11 +459,14 @@ async function initDashboard(user) {
         }
     };
 
+    // Check every 3 seconds
     setInterval(async () => {
         if (!document.hidden) await checkSession();
     }, 3000);
     window.addEventListener('focus', checkSession);
 
+
+    // ... Continue with Standard Dashboard Logic ...
     try {
         const { data: userProfile } = await supabase.from('users').select('name').eq('email', user.email).single();
         if (userProfile) currentUserName = userProfile.name;
@@ -616,124 +636,6 @@ document.getElementById('inventoryCategoryFilter')?.addEventListener('change', (
     renderInventoryLookupTable(term);
 });
 
-// Helper: Unified Category Detection
-function detectItemCategory(description) {
-    const d = (description || "").toLowerCase();
-    
-    // 1. Laptops
-    if (d.includes('laptop') || d.includes('macbook') || d.includes('notebook') || 
-        d.includes('thinkpad') || d.includes('latitude') || d.includes('elitebook') || 
-        d.includes('probook') || d.includes('chromebook')) {
-        return 'Laptops';
-    }
-    
-    // 2. Tablets (Check specific brands/models first, then generic 'tablet'. Avoid loose 'tab')
-    if (d.includes('tablet') || d.includes('ipad') || d.includes('galaxy tab') || 
-        d.includes('lenovo tab') || d.includes(' tab ')) {
-        return 'Tablets';
-    }
-
-    // 3. Desktops
-    if (d.includes('desktop') || d.includes('system unit') || d.includes('cpu') || 
-        d.includes('mac mini') || d.includes('imac') || d.includes('workstation') || 
-        d.includes('optiplex') || d.includes('all-in-one') || d.includes('aio')) {
-        return 'Desktops'; // Maps to 'Desktops & CPUs' in dropdown
-    }
-
-    // 4. Monitors
-    if (d.includes('monitor') || d.includes('display') || d.includes('screen') || 
-        d.includes('led monitor') || d.includes('lcd monitor')) {
-        return 'Monitors';
-    }
-
-    // 5. Peripherals
-    if (d.includes('printer') || d.includes('scanner') || d.includes('projector') || 
-        d.includes('keyboard') || d.includes('mouse') || d.includes('router') || 
-        d.includes('switch') || d.includes('webcam')) {
-        return 'Peripherals';
-    }
-
-    return 'Others';
-}
-
-// --- UPDATED FUNCTION: UPDATE DROPDOWN COUNTS (FIXED 1000 LIMIT) ---
-window.loadInventoryStats = async () => {
-    // 1. Refresh borrowed status (Paginated)
-    await updateBorrowedStatus();
-
-    // 2. Fetch all inventory (Paginated to bypass 1000 limit)
-    let allItems = [];
-    let from = 0;
-    const limit = 1000;
-    let fetching = true;
-
-    while (fetching) {
-        const { data, error } = await supabase
-            .from('inventory')
-            .select('serial, description')
-            .range(from, from + limit - 1);
-
-        if (error || !data || data.length === 0) {
-            fetching = false;
-        } else {
-            allItems = allItems.concat(data);
-            if (data.length < limit) {
-                fetching = false;
-            } else {
-                from += limit;
-            }
-        }
-    }
-
-    if (allItems.length === 0) return;
-
-    // 3. Filter for AVAILABLE items
-    const availableItems = allItems.filter(item => 
-        !borrowedSerials.has(item.serial) && 
-        !cart.some(c => c.serial === item.serial)
-    );
-
-    // 4. Count by Category using Unified Logic
-    const counts = {
-        'All': availableItems.length,
-        'Tablets': 0,
-        'Laptops': 0,
-        'Desktops': 0, // Maps to 'Desktops & CPUs' in dropdown
-        'Monitors': 0,
-        'Peripherals': 0
-    };
-
-    availableItems.forEach(item => {
-        const cat = detectItemCategory(item.description);
-        if (counts.hasOwnProperty(cat)) {
-            counts[cat]++;
-        }
-    });
-
-    // 5. Update Dropdown Option Text
-    const select = document.getElementById('inventoryCategoryFilter');
-    if (select) {
-        const labels = {
-            'All': 'All Categories',
-            'Tablets': 'Tablets',
-            'Laptops': 'Laptops',
-            'Desktops': 'Desktops & CPUs',
-            'Monitors': 'Monitors',
-            'Peripherals': 'Peripherals'
-        };
-
-        Array.from(select.options).forEach(opt => {
-            const baseLabel = labels[opt.value];
-            if (baseLabel) {
-                // Logic check: Dropdown value matches keys in our 'counts' object directly
-                const countKey = opt.value; 
-                const count = counts[countKey] || 0;
-                opt.text = `${baseLabel} (${count})`;
-            }
-        });
-    }
-};
-
 const lookupModalEl = document.getElementById('inventoryLookupModal');
 if (lookupModalEl) {
     lookupModalEl.addEventListener('shown.bs.modal', () => {
@@ -745,14 +647,19 @@ if (lookupModalEl) {
             const filterEl = document.getElementById('inventoryCategoryFilter');
             if (filterEl) filterEl.value = 'All';
             
-            // Reset Bulk Inputs
-            document.getElementById('bulkCategorySelect').value = '';
-            document.getElementById('bulkBrandInput').value = '';
-            document.getElementById('bulkQtyInput').value = '1';
-            document.getElementById('bulkStatusMsg').innerText = "Select a type, optionally type a brand, and choose quantity.";
+            const bCat = document.getElementById('bulkCategorySelect');
+            if (bCat) bCat.value = '';
+            
+            const bBrand = document.getElementById('bulkBrandInput');
+            if (bBrand) bBrand.value = '';
+            
+            const bQty = document.getElementById('bulkQtyInput');
+            if (bQty) bQty.value = '1';
+            
+            const bMsg = document.getElementById('bulkStatusMsg');
+            if (bMsg) bMsg.innerText = "Select a type, optionally type a brand, and choose quantity.";
             
             renderInventoryLookupTable('');
-            window.loadInventoryStats();
         }
     });
 }
@@ -779,7 +686,7 @@ async function handleBulkAdd() {
         if (category) {
             const catMap = {
                 'Tablets': 'description.ilike.%tablet%,description.ilike.%ipad%,description.ilike.%galaxy tab%,description.ilike.%tab %',
-                'Laptops': 'description.ilike.%laptop%,description.ilike.%macbook%,description.ilike.%notebook%,description.ilike.%thinkpad%',
+                'Laptops': 'description.ilike.%laptop%,description.ilike.%macbook%,description.ilike.%notebook%',
                 'Desktops': 'description.ilike.%desktop%,description.ilike.%system unit%,description.ilike.%cpu%,description.ilike.%mac mini%,description.ilike.%imac%',
                 'Monitors': 'description.ilike.%monitor%,description.ilike.%display%',
                 'Peripherals': 'description.ilike.%printer%,description.ilike.%scanner%,description.ilike.%projector%'
@@ -812,6 +719,7 @@ async function handleBulkAdd() {
         }
 
         const itemsToAdd = availableItems.slice(0, qty);
+        
         itemsToAdd.forEach(item => {
             cart.push({
                 serial: item.serial,
@@ -822,6 +730,7 @@ async function handleBulkAdd() {
         });
 
         renderCart();
+
         const addedCount = itemsToAdd.length;
         let successText = `Added ${addedCount} items`;
         if (category) successText += ` (${category})`;
@@ -834,8 +743,8 @@ async function handleBulkAdd() {
             msgEl.innerText = `Successfully ${successText}!`;
             msgEl.className = "small text-success mt-1 fw-bold";
         }
+
         qtyInput.value = 1;
-        window.loadInventoryStats(); 
 
     } catch (e) {
         msgEl.innerText = "Error: " + e.message;
@@ -865,12 +774,11 @@ async function renderInventoryLookupTable(filterTerm) {
         try {
             let query = supabase.from('inventory').select('*').limit(50); 
 
-            // SQL filtering for initial fetch (optimization)
             if (categoryVal !== 'All') {
                 const catMap = {
                     'Tablets': 'description.ilike.%tablet%,description.ilike.%ipad%,description.ilike.%galaxy tab%,description.ilike.%tab %',
-                    'Laptops': 'description.ilike.%laptop%,description.ilike.%macbook%,description.ilike.%notebook%,description.ilike.%thinkpad%',
-                    'Desktops': 'description.ilike.%desktop%,description.ilike.%system unit%,description.ilike.%cpu%',
+                    'Laptops': 'description.ilike.%laptop%,description.ilike.%macbook%,description.ilike.%notebook%',
+                    'Desktops': 'description.ilike.%desktop%,description.ilike.%system unit%,description.ilike.%cpu%,description.ilike.%mac mini%,description.ilike.%imac%',
                     'Monitors': 'description.ilike.%monitor%,description.ilike.%display%',
                     'Peripherals': 'description.ilike.%printer%,description.ilike.%scanner%,description.ilike.%projector%'
                 };
@@ -902,24 +810,33 @@ async function renderInventoryLookupTable(filterTerm) {
 
             currentSearchResults = availableItems;
 
-            // USE THE UNIFIED FUNCTION HERE
+            const getCategory = (desc) => {
+                const d = (desc || "").toLowerCase();
+                if (d.includes('tablet') || d.includes('ipad') || d.includes('galaxy tab')) return 'Tablets';
+                if (d.includes('laptop') || d.includes('macbook') || d.includes('notebook')) return 'Laptops';
+                if (d.includes('desktop') || d.includes('system unit') || d.includes('cpu') || d.includes('mac mini') || d.includes('imac')) return 'Desktops & CPUS';
+                if (d.includes('monitor') || d.includes('display')) return 'Monitors';
+                if (d.includes('printer') || d.includes('scanner') || d.includes('projector')) return 'Peripherals';
+                return 'Accessories & Others';
+            };
+
             const getCategoryIcon = (cat) => {
                 const map = {
                     'Tablets': 'fa-tablet-screen-button',
                     'Laptops': 'fa-laptop',
-                    'Desktops': 'fa-computer',
+                    'Desktops & CPUS': 'fa-computer',
                     'Monitors': 'fa-display',
                     'Peripherals': 'fa-print',
-                    'Others': 'fa-box-open'
+                    'Accessories & Others': 'fa-box-open'
                 };
                 return map[cat] || 'fa-box';
             };
 
-            const catOrder = { 'Tablets': 1, 'Laptops': 2, 'Desktops': 3, 'Monitors': 4, 'Peripherals': 5, 'Others': 6 };
+            const catOrder = { 'Tablets': 1, 'Laptops': 2, 'Desktops & CPUS': 3, 'Monitors': 4, 'Peripherals': 5, 'Accessories & Others': 6 };
 
             availableItems.sort((a, b) => {
-                const catA = detectItemCategory(a.description); // Use shared function
-                const catB = detectItemCategory(b.description);
+                const catA = getCategory(a.description);
+                const catB = getCategory(b.description);
                 if (catOrder[catA] !== catOrder[catB]) {
                     return (catOrder[catA] || 99) - (catOrder[catB] || 99);
                 }
@@ -928,19 +845,14 @@ async function renderInventoryLookupTable(filterTerm) {
 
             let lastCategory = "";
             availableItems.forEach(item => {
-                const currentCategory = detectItemCategory(item.description); // Use shared function
+                const currentCategory = getCategory(item.description);
                 
-                // Group Header
                 if (currentCategory !== lastCategory) {
-                    let displayCat = currentCategory;
-                    if(displayCat === 'Desktops') displayCat = 'Desktops & CPUs';
-                    if(displayCat === 'Others') displayCat = 'Accessories & Others';
-
                     const iconClass = getCategoryIcon(currentCategory);
                     tbody.innerHTML += `
                         <tr class="table-light border-bottom border-2 sticky-top" style="top: 0; z-index: 1;">
                             <td colspan="4" class="fw-bold text-primary small text-uppercase px-3 py-2 bg-light shadow-sm">
-                                <i class="fa ${iconClass} me-2"></i>${displayCat}
+                                <i class="fa ${iconClass} me-2"></i>${currentCategory}
                             </td>
                         </tr>
                     `;
@@ -1082,35 +994,13 @@ async function loadInventory() {
     updateBorrowedStatus();
 }
 
-// --- UPDATED FUNCTION: FETCH BORROWED STATUS (FIXED 1000 LIMIT) ---
 async function updateBorrowedStatus() {
-    let allBorrowed = [];
-    let from = 0;
-    const limit = 1000;
-    let fetching = true;
-
-    while (fetching) {
-        const { data, error } = await supabase.from('gate_passes')
-            .select('serial')
-            .in('status', ['OUT', 'RELEASING', 'PENDING_PROPERTY', 'PENDING_INSPECTION', 'PENDING_OIC'])
-            .range(from, from + limit - 1);
+    const { data } = await supabase.from('gate_passes')
+        .select('serial')
+        .in('status', ['OUT', 'RELEASING', 'PENDING_PROPERTY', 'PENDING_INSPECTION', 'PENDING_OIC']);
         
-        if (error || !data || data.length === 0) {
-            fetching = false;
-        } else {
-            allBorrowed = allBorrowed.concat(data);
-            if (data.length < limit) {
-                fetching = false;
-            } else {
-                from += limit;
-            }
-        }
-    }
-        
-    if(allBorrowed.length > 0) {
-        borrowedSerials = new Set(allBorrowed.map(d => d.serial));
-    } else {
-        borrowedSerials = new Set();
+    if(data) {
+        borrowedSerials = new Set(data.map(d => d.serial));
     }
 }
 
@@ -1144,17 +1034,8 @@ function loadAllRecords(user) {
                 return q;
             };
 
-            // ACTIVE DATA FETCH - FIXED ERROR HANDLING FOR RETURN SELECTOR
-            const { data: aData, error: aError } = await buildQuery('OUT').order('time_out', { ascending: false }).limit(500);
-            
-            if (aError) {
-                console.error("Error loading active batches:", aError);
-                activeData = []; 
-            } else {
-                activeData = aData || [];
-            }
-            // Always attempt to populate selector to clear the "Loading..." state
-            populateReturnSelector(); 
+            const { data: aData } = await buildQuery('OUT').order('time_out', { ascending: false }).limit(500);
+            if(aData) activeData = aData;
 
             const { data: hData } = await buildQuery('RETURNED').order('time_return', { ascending: false }).limit(500);
             if(hData) historyData = hData;
@@ -1230,7 +1111,7 @@ function loadAllRecords(user) {
     window.refreshTableData = () => {
         lastStation1Signature = ""; lastStation2Signature = ""; lastStation3Signature = "";
         lastReleasingSignature = ""; lastActiveSignature = ""; lastHistorySignature = "";
-        lastRejectedSignature = ""; lastSelectorSignature = ""; // Reset selector signature
+        lastRejectedSignature = "";
         fetchRecords();
         updateBorrowedStatus();
     };
@@ -1243,43 +1124,6 @@ function loadAllRecords(user) {
             updateBorrowedStatus();
         }
     }, 5000);
-}
-
-function populateReturnSelector() {
-    const selector = document.getElementById('returnBatchID');
-    if (!selector) return;
-
-    // Filter activeData to get unique batches
-    const batches = activeData.reduce((acc, item) => {
-        if (!acc[item.unique_id]) {
-            acc[item.unique_id] = { id: item.unique_id, borrower: item.borrower };
-        }
-        return acc;
-    }, {});
-
-    const batchKeys = Object.keys(batches);
-    
-    // Prevent flickering: only update if data changed OR if still showing "Loading..."
-    const currentSignature = JSON.stringify(batchKeys.sort());
-    if (currentSignature === lastSelectorSignature && !selector.options[0]?.text.includes("Loading")) return;
-    lastSelectorSignature = currentSignature;
-
-    const previousVal = selector.value;
-    
-    if (batchKeys.length === 0) {
-        selector.innerHTML = '<option value="" selected disabled>No Active Batches Found</option>';
-    } else {
-        selector.innerHTML = '<option value="" selected disabled>Select Batch to Return...</option>';
-        // Sort batches by ID descending (newest first)
-        Object.values(batches).sort((a,b) => b.id.localeCompare(a.id)).forEach(b => {
-            const opt = document.createElement('option');
-            opt.value = b.id;
-            opt.text = `${b.id} - ${b.borrower}`;
-            selector.appendChild(opt);
-        });
-    }
-
-    if (previousVal && batches[previousVal]) selector.value = previousVal;
 }
 
 // ==========================================
@@ -1764,7 +1608,7 @@ function renderTable(type) {
 
             const itemRows = group.items.map(item => `
                 <tr>
-                    <td class="text-primary fw-bold ps-4" style="width:20%; cursor:pointer;" onclick="window.selectRow('${group.id}')"><i class="fa fa-arrow-turn-up me-1 small"></i><small>${item.serial}</small></td>
+                    <td class="text-primary fw-bold ps-4" style="width:20%; cursor:pointer;" onclick="window.selectRow('${item.serial}')"><i class="fa fa-arrow-turn-up me-1 small"></i><small>${item.serial}</small></td>
                     <td style="width:20%"><small>${item.description}</small></td>
                     <td style="width:10%"><small>${item.asset_no || '-'}</small></td>
                     <td style="width:10%"><small class="text-muted">${item.property_no || '-'}</small></td>
@@ -1869,48 +1713,20 @@ function initSearchListeners() {
 
 document.getElementById('returnBtn')?.addEventListener('click', async () => {
     if (currentUser.email !== ADMIN_ROLES.STATION_4) return alert("Unauthorized.");
-    
-    const batchId = document.getElementById('returnBatchID').value.trim();
-    const g = document.getElementById('guardIn').value.trim();
-    
-    if (!batchId || !g) return alert("Please fill in both the Gate Pass ID and Guard Name.");
+    const s = document.getElementById('returnSerial').value;
+    const g = document.getElementById('guardIn').value;
+    if (!s || !g) return alert("Fill fields");
 
-    // Verify if the batch exists and is currently 'OUT'
-    const { data, error } = await supabase
-        .from('gate_passes')
-        .select('unique_id')
-        .eq('unique_id', batchId)
-        .eq('status', 'OUT');
+    const { data } = await supabase.from('gate_passes').select('id').eq('serial', s).eq('status', 'OUT').single();
+    if (!data) return alert("Item not found or already returned.");
 
-    if (error || !data || data.length === 0) {
-        return alert("Batch ID not found or items are not currently marked as 'OUT'.");
-    }
+    if (!await showConfirm("Return", `Return ${s}?`)) return;
 
-    if (!await showConfirm("Batch Return", `Return all ${data.length} items for Batch ${batchId}?`)) return;
-
-    try {
-        const { error: updateError } = await supabase
-            .from('gate_passes')
-            .update({ 
-                status: 'RETURNED', 
-                guard_in: g, 
-                time_return: new Date().toISOString() 
-            })
-            .eq('unique_id', batchId)
-            .eq('status', 'OUT');
-
-        if (updateError) throw updateError;
-
-        alert(`Batch ${batchId} returned successfully!`);
-        document.getElementById('returnBatchID').value = "";
-        document.getElementById('guardIn').value = "";
-        if (window.refreshTableData) window.refreshTableData();
-        
-    } catch (e) {
-        alert("Return failed: " + e.message);
-    }
+    await supabase.from('gate_passes').update({ status: 'RETURNED', guard_in: g, time_return: new Date().toISOString() }).eq('id', data.id);
+    document.getElementById('returnSerial').value="";
+    if(window.refreshTableData) window.refreshTableData();
 });
-window.selectRow = (batchId) => document.getElementById('returnBatchID').value = batchId;
+window.selectRow = (s) => document.getElementById('returnSerial').value = s;
 
 // ==========================================
 // F. UTILS & UNIFIED EXPORT LOGIC
@@ -2443,40 +2259,12 @@ if (processImportBtn) {
         r.readAsArrayBuffer(f);
     });
 }
-
-// --- UPDATED FUNCTION: CHUNKED BULK UPLOAD (FIXED 1000 LIMIT) ---
 document.getElementById('saveBulkBtn')?.addEventListener('click', async () => {
     if(!bulkImportData.length) return;
     if(!await showConfirm("Import", `Save ${bulkImportData.length} items?`)) return;
-    
-    const CHUNK_SIZE = 1000;
-    
-    // Show loading state
-    const btn = document.getElementById('saveBulkBtn');
-    const originalText = btn.innerText;
-    btn.disabled = true;
-    btn.innerText = "Importing...";
-
-    try {
-        for (let i = 0; i < bulkImportData.length; i += CHUNK_SIZE) {
-            const chunk = bulkImportData.slice(i, i + CHUNK_SIZE);
-            const { error } = await supabase.from('inventory').upsert(chunk, { onConflict: 'serial' });
-            
-            if(error) {
-                throw new Error(`Batch ${i/CHUNK_SIZE + 1} failed: ${error.message}`);
-            }
-        }
-        
-        alert("Imported successfully!"); 
-        bulkImportData = []; 
-        document.getElementById('importPreview').style.display='none';
-        if(window.loadInventoryStats) window.loadInventoryStats(); // Refresh stats immediately
-    } catch (e) {
-        alert("Error: " + e.message);
-    } finally {
-        btn.disabled = false;
-        btn.innerText = originalText;
-    }
+    const { error } = await supabase.from('inventory').upsert(bulkImportData, { onConflict: 'serial' });
+    if(error) alert("Error: " + error.message);
+    else { alert("Imported!"); bulkImportData = []; document.getElementById('importPreview').style.display='none'; }
 });
 
 window.addEventListener('DOMContentLoaded', () => { 
