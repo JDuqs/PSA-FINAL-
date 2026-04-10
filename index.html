@@ -124,9 +124,14 @@
             </form>
 
             <div class="text-center border-top pt-3">
-                <a href="signup.html" class="small text-decoration-none text-primary fw-bold">
-                    Request Account Access / Sign Up
-                </a>
+                <div class="d-grid gap-2 mt-3">
+                    <a href="guardsupplies.html" class="btn btn-outline-success btn-sm fw-bold">
+                        <i class="fas fa-shield-alt me-1"></i> Security Guard Login (Supplies Tracking)
+                    </a>
+                    <a href="signup.html" class="btn btn-outline-primary btn-sm fw-bold">
+                        Request Account Access / Sign Up
+                    </a>
+                </div>
             </div>
             <p id="errorMsg" class="text-danger mt-3 small fw-bold"></p>
         </div>
@@ -142,6 +147,9 @@
         </div>
     </footer>
 
+    <script type="module">
+        document.getElementById('loginForm').addEventListener('submit', window.handleLogin);
+    </script>
     <script type="module" src="app.js"></script>
 </body>
 </html>

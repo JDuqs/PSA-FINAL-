@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PSA Gate Pass Dashboard</title>
+    <title>PhilSys Gate Pass Dashboard</title>
     
     <!-- CSS Dependencies -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -64,6 +64,9 @@
             height: 55px;
             margin-bottom: 10px;
             filter: drop-shadow(0 0 2px rgba(255,255,255,0.2));
+            background-color: white;
+            padding: 4px;
+            border-radius: 8px;
         }
         .sidebar-nav {
             padding: 20px 0;
@@ -245,8 +248,8 @@
         <!-- SIDEBAR NAVIGATION -->
         <nav class="sidebar">
             <div class="sidebar-brand">
-                <img src="PSA.png" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Philippine_Statistics_Authority_%28PSA%29_logo.svg/1024px-Philippine_Statistics_Authority_%28PSA%29_logo.svg.png'" alt="PSA">
-                <div class="fw-bold text-uppercase small" style="letter-spacing: 1px;">Gate Pass System</div>
+                <img src="PSA.png" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Philippine_Statistics_Authority_%28PSA%29_logo.svg/1024px-Philippine_Statistics_Authority_%28PSA%29_logo.svg.png'" alt="PhilSys">
+                <div class="fw-bold text-uppercase small" style="letter-spacing: 1px;">PhilSys Gate Pass</div>
             </div>
             
             <div class="sidebar-nav">
@@ -259,20 +262,16 @@
                 <a class="nav-item-btn" data-target="view-records">
                     <i class="fa fa-folder-open"></i> Gate Pass Records
                 </a>
-                <!-- MASTER INVENTORY NAVIGATION (Hidden by default, shown for Admins) -->
-                <a class="nav-item-btn" data-target="view-inventory" id="navMasterInventory" style="display: none;">
-                    <i class="fa fa-database"></i> Master Inventory
-                </a>
             </div>
 
-            <div class="sidebar-footer p-0 py-2">
-                <a href="admin.html" id="adminPanelBtn" class="nav-item-btn position-relative" style="display:none; color: #ffc107;">
-                    <i class="fa fa-user-shield"></i> Manage Users
-                    <span id="adminRequestBadge" class="position-absolute top-50 end-0 translate-middle-y me-4 badge rounded-pill bg-danger shadow-sm" style="display:none;">0</span>
+            <div class="sidebar-footer">
+                <a href="admin.html" id="adminPanelBtn" class="nav-item-btn text-warning mb-3 position-relative" style="display:none; padding: 10px 20px; background: rgba(255, 193, 7, 0.08); border-radius: 8px; width: fit-content; margin-left: auto; margin-right: auto;">
+                    <span><i class="fa fa-user-shield text-warning me-2"></i> Manage Users</span>
+                    <span id="adminRequestBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger shadow-sm" style="display:none; z-index: 10;">0</span>
                 </a>
 
-                <a class="nav-item-btn" id="logoutBtn" style="color: #ff4d4d; cursor: pointer;">
-                    <i class="fa fa-power-off"></i> Secure Logout
+                <a class="nav-item-btn text-danger p-0 mt-2 ps-3" id="logoutBtn">
+                    <i class="fa fa-power-off text-danger"></i> Secure Logout
                 </a>
             </div>
         </nav>
@@ -300,90 +299,127 @@
                         <div class="col-lg-8">
                             <div class="section-card">
                                 <div class="section-title">
-                                    <span id="issuanceTitle">New Gate Pass Request</span>
+                                    <span id="issuanceTitle">New PhilSys Request</span>
                                 </div>
                                 
-                                <form id="issuanceForm">
-                                    <!-- Shared Borrower Info -->
-                                    <div class="row g-3 mb-4">
-                                        <div class="col-md-8"><label class="small fw-bold text-secondary">Borrower's Name*</label><input type="text" id="borrower" class="form-control" required></div>
-                                        <div class="col-md-4"><label class="small fw-bold text-secondary">Due Date*</label><input type="date" id="dueDate" class="form-control" required></div>
-                                        <div class="col-md-6"><label class="small fw-bold text-secondary">Destination*</label><input type="text" id="destination" class="form-control" required></div>
-                                        <div class="col-md-6"><label class="small fw-bold text-secondary">Project*</label><input type="text" id="project" class="form-control"></div>
-                                    </div>
-                                    
-                                    <!-- Equipment Addition Section with Tabs -->
-                                    <div class="p-4 bg-light border rounded mb-3 border-2 shadow-sm">
-                                        <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-3">
-                                            <label class="fw-bold text-primary m-0 fs-5"><i class="fa fa-box-open me-2"></i>Add Items to Request</label>
-                                            
-                                            <!-- TABS FOR EQUIPMENT TYPE (Hidden by default, shown for Admins) -->
-                                            <ul class="nav nav-pills" id="itemEntryTabs" role="tablist" style="display: none;">
-                                                <li class="nav-item">
-                                                    <button class="nav-link active py-1 px-3 fw-bold shadow-sm" data-bs-toggle="pill" data-bs-target="#psaItemPane">PSA Equipment</button>
-                                                </li>
-                                                <li class="nav-item ms-2">
-                                                    <button class="nav-link py-1 px-3 fw-bold shadow-sm border border-success text-success bg-white" data-bs-toggle="pill" data-bs-target="#philsysItemPane">PhilSys Kit</button>
-                                                </li>
-                                            </ul>
-                                        </div>
+                                <ul class="nav nav-pills mb-4 border-bottom pb-2" id="issueTabs" role="tablist">
+                                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#manualEntry">Luggage Kit Entry</button></li>
+                                    <!-- Bulk Import hidden for Kit Entry style, but ID kept so app.js doesn't crash -->
+                                    <li class="nav-item" id="bulkImportNav" style="display:none;"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#bulkImport">Bulk Inventory</button></li>
+                                </ul>
 
-                                        <div class="tab-content mt-3">
-                                            <!-- PSA EQUIPMENT ENTRY -->
-                                            <div class="tab-pane fade show active" id="psaItemPane">
-                                                <div class="row g-2 align-items-end">
-                                                    <div class="col-md-3">
-                                                        <label class="small fw-bold">Serial No.*</label>
-                                                        <div class="input-group">
-                                                            <input type="text" id="serial" class="form-control border-primary" placeholder="Scan or Search">
-                                                            <button class="btn btn-primary" type="button" id="btnOpenInventoryLookup"><i class="fa fa-search"></i></button>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-3"><label class="small fw-bold">Property No.</label><input type="text" id="propertyNum" class="form-control"></div>
-                                                    <div class="col-md-3"><label class="small fw-bold">Description*</label><input type="text" id="desc" class="form-control"></div>
-                                                    <div class="col-md-3"><label class="small fw-bold">Asset Tag</label><input type="text" id="asset" class="form-control"></div>
-                                                    <div class="col-12 mt-3">
-                                                        <button type="button" id="addToCartBtn" class="btn btn-psa-yellow w-100 fw-bold py-2 shadow-sm"><i class="fa fa-plus me-1"></i> ADD ITEM TO CART</button>
-                                                    </div>
-                                                </div>
+                                <div class="tab-content">
+                                    <div class="tab-pane fade show active" id="manualEntry">
+                                        <form id="issuanceForm">
+                                            <!-- Standard User Info -->
+                                            <div class="row g-3 mb-4">
+                                                <div class="col-md-8"><label class="small fw-bold text-secondary">Borrower's Name*</label><input type="text" id="borrower" class="form-control" required></div>
+                                                <div class="col-md-4"><label class="small fw-bold text-secondary">Due Date*</label><input type="date" id="dueDate" class="form-control" required></div>
+                                                <div class="col-md-6"><label class="small fw-bold text-secondary">Destination*</label><input type="text" id="destination" class="form-control" required></div>
+                                                <div class="col-md-6"><label class="small fw-bold text-secondary">Project*</label><input type="text" id="project" class="form-control"></div>
                                             </div>
+                                            
+                                            <!-- ========================================== -->
+                                            <!-- CUSTOM PHIL-SYS LUGGAGE KIT GRID           -->
+                                            <!-- ========================================== -->
+                                            <div class="p-4 bg-light border rounded mb-3 border-2 shadow-sm border-primary">
+                                                <label class="fw-bold mb-3 text-primary fs-5"><i class="fa fa-suitcase-rolling me-2"></i>Luggage Kit Components</label>
 
-                                            <!-- PHILSYS KIT ENTRY -->
-                                            <div class="tab-pane fade" id="philsysItemPane">
                                                 <div class="row g-3">
-                                                    <!-- Editable Main ID -->
+                                                    <!-- Main Identifier with Search Button -->
                                                     <div class="col-md-12 mb-2">
                                                         <label class="small fw-bold text-dark">Kit Serial Number (Main ID)*</label>
                                                         <div class="input-group shadow-sm">
-                                                            <input type="text" id="kitSerial" class="form-control border-success form-control-lg bg-white" placeholder="Scan or search Kit Serial...">
-                                                            <button class="btn btn-success px-4" type="button" id="btnOpenPhilSysLookup"><i class="fa fa-search"></i></button>
+                                                            <input type="text" id="kitSerial" class="form-control border-primary form-control-lg bg-white" placeholder="Scan or search Kit Serial..." required>
+                                                            <button class="btn btn-primary px-4" type="button" id="btnOpenPhilSysLookup"><i class="fa fa-search"></i></button>
                                                         </div>
                                                     </div>
-                                                    <!-- Read-only child fields -->
-                                                    <div class="col-md-6"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Laptop Model</label><input type="text" id="laptopModel" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    <div class="col-md-6"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Laptop Serial No.</label><input type="text" id="laptopSerial" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    <div class="col-md-4"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Scanner Serial No.</label><input type="text" id="scannerSerial" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    <div class="col-md-4"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Iris Scanner SN</label><input type="text" id="irisSerial" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    <div class="col-md-4"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Webcam SN</label><input type="text" id="webcamSerial" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    <div class="col-md-4"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Doc Scanner SN</label><input type="text" id="docScannerSerial" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    <div class="col-md-4"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Monitor SN</label><input type="text" id="monitorSerial" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    <div class="col-md-4"><label class="small fw-bold text-secondary"><i class="fa fa-lock me-1"></i>Printer SN</label><input type="text" id="printerSerial" class="form-control bg-light" placeholder="Auto-filled" readonly></div>
-                                                    
-                                                    <div class="col-12 mt-3">
-                                                        <button type="button" id="btnCompileAndAddKit" class="btn btn-success w-100 fw-bold py-2 shadow-sm"><i class="fa fa-plus-circle me-1"></i> ADD LUGGAGE KIT TO CART</button>
+
+                                                    <!-- Laptop Info -->
+                                                    <div class="col-md-6">
+                                                        <label class="small fw-bold text-secondary">Laptop Model</label>
+                                                        <input type="text" id="laptopModel" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="small fw-bold text-secondary">Laptop Serial No.</label>
+                                                        <input type="text" id="laptopSerial" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+
+                                                    <!-- Peripherals Row 1 -->
+                                                    <div class="col-md-4">
+                                                        <label class="small fw-bold text-secondary">Scanner Serial No.</label>
+                                                        <input type="text" id="scannerSerial" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="small fw-bold text-secondary">Iris Scanner SN</label>
+                                                        <input type="text" id="irisSerial" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="small fw-bold text-secondary">Webcam SN</label>
+                                                        <input type="text" id="webcamSerial" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+
+                                                    <!-- Peripherals Row 2 -->
+                                                    <div class="col-md-4">
+                                                        <label class="small fw-bold text-secondary">Doc Scanner SN</label>
+                                                        <input type="text" id="docScannerSerial" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="small fw-bold text-secondary">Monitor SN</label>
+                                                        <input type="text" id="monitorSerial" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="small fw-bold text-secondary">Printer SN</label>
+                                                        <input type="text" id="printerSerial" class="form-control bg-light" placeholder="Auto-filled via search" readonly tabindex="-1">
+                                                    </div>
+
+                                                    <!-- Action Buttons for the Kit -->
+                                                    <div class="col-12 mt-4 d-flex gap-2">
+                                                        <button type="button" id="btnCancelKitForm" class="btn btn-outline-danger fw-bold py-2 shadow-sm w-25">
+                                                            <i class="fa fa-eraser me-1"></i> CLEAR FIELDS
+                                                        </button>
+                                                        <button type="button" id="btnCompileAndAddKit" class="btn btn-primary w-75 fw-bold py-2 shadow-sm fs-6">
+                                                            <i class="fa fa-plus-circle me-2"></i> ADD COMPLETE KIT TO CART
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            <!-- HIDDEN: Original App.js Inputs -->
+                                            <!-- These invisible inputs map the Kit data so your existing app.js works flawlessly without changes -->
+                                            <div style="display: none;">
+                                                <input type="text" id="serial">
+                                                <input type="text" id="propertyNum" value="N/A">
+                                                <input type="text" id="desc">
+                                                <input type="text" id="asset" value="Luggage Kit">
+                                                <button type="button" id="addToCartBtn"></button>
+                                            </div>
+                                        </form>
+
+                                        <table class="table table-sm table-bordered shadow-sm bg-white mt-3">
+                                            <thead class="table-light"><tr><th>Kit Serial No.</th><th>Property No.</th><th>Kit Components (Details)</th><th>Asset</th><th class="text-center">Action</th></tr></thead>
+                                            <tbody id="cartTableBody"><tr><td colspan="5" class="text-center text-muted py-3">Cart is empty</td></tr></tbody>
+                                        </table>
+                                        
+                                        <!-- Unified Cart Actions -->
+                                        <button type="button" id="issueBtn" class="btn btn-success w-100 fw-bold shadow-sm py-3 mt-2" style="font-size: 1.1rem;" disabled>
+                                            <i class="fa fa-paper-plane me-2"></i> SUBMIT REQUEST
+                                        </button>
+                                    </div>
+
+                                    <!-- Bulk Import (Hidden stub structure to keep app.js happy) -->
+                                    <div class="tab-pane fade" id="bulkImport">
+                                        <div class="alert alert-info border-info shadow-sm">Bulk import and management is restricted to Admins via the main dashboard.</div>
+                                        <div style="display:none;">
+                                            <select id="inventoryDepartment"></select>
+                                            <input type="file" id="inventoryFile">
+                                            <button id="processImportBtn"></button>
+                                            <div id="importBody"></div>
+                                            <button id="saveBulkBtn"></button>
+                                            <button id="exportInventoryBtn"></button>
                                         </div>
                                     </div>
-                                </form>
-
-                                <!-- Shared Cart Display -->
-                                <table class="table table-sm table-bordered shadow-sm bg-white">
-                                    <thead class="table-light"><tr><th>Serial</th><th>Property No.</th><th>Description</th><th>Asset</th><th class="text-center">Action</th></tr></thead>
-                                    <tbody id="cartTableBody"><tr><td colspan="5" class="text-center text-muted py-3">Cart is empty</td></tr></tbody>
-                                </table>
-                                <button id="issueBtn" class="btn btn-success w-100 py-3 fw-bold shadow mt-2" style="font-size: 1.1rem;" disabled>SUBMIT REQUEST</button>
+                                </div>
                             </div>
                         </div>
 
@@ -416,7 +452,6 @@
                         </div>
                     </div>
                 </div>
-
 
                 <!-- ============================================== -->
                 <!-- VIEW 2: WORKFLOW APPROVALS                     -->
@@ -454,11 +489,11 @@
 
                         <div class="tab-content mt-3">
                             <div class="tab-pane fade" id="stn1Pane">
-                                <div class="alert alert-secondary border-secondary shadow-sm"><i class="fa fa-warehouse me-2"></i> Verify initial property availability.</div>
+                                <div class="alert alert-secondary border-secondary shadow-sm"><i class="fa fa-warehouse me-2"></i> Verify initial kit availability.</div>
                                 <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-secondary"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Project</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="station1TableBody"></tbody></table></div>
                             </div>
                             <div class="tab-pane fade" id="stn2Pane">
-                                <div class="alert alert-info border-info shadow-sm"><i class="fa fa-magnifying-glass me-2"></i> Inspect items for condition and specifications.</div>
+                                <div class="alert alert-info border-info shadow-sm"><i class="fa fa-magnifying-glass me-2"></i> Inspect components for condition and specifications.</div>
                                 <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-info"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Project</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="station2TableBody"></tbody></table></div>
                             </div>
                             <div class="tab-pane fade" id="stn3Pane">
@@ -577,78 +612,6 @@
                     </div>
                 </div>
 
-                <!-- ============================================== -->
-                <!-- VIEW 4: MASTER INVENTORY (SEPARATED TABLES)    -->
-                <!-- ============================================== -->
-                <div id="view-inventory" class="app-view">
-                    <div class="section-card">
-                        <div class="section-title"><span><i class="fa fa-database me-2"></i> Master Inventory Management</span></div>
-                        
-                        <ul class="nav nav-pills mb-4 border-bottom pb-3" id="inventoryTabs" role="tablist">
-                            <li class="nav-item">
-                                <button class="nav-link active px-4 position-relative" data-bs-toggle="pill" data-bs-target="#psaInvPane">
-                                    <i class="fa fa-server me-2"></i> PSA Inventory Database
-                                </button>
-                            </li>
-                            <li class="nav-item">
-                                <button class="nav-link px-4 position-relative" data-bs-toggle="pill" data-bs-target="#philsysInvPane">
-                                    <i class="fa fa-suitcase-rolling me-2"></i> PhilSys Kits Database
-                                </button>
-                            </li>
-                        </ul>
-
-                        <div class="tab-content mt-3">
-                            <!-- PSA INVENTORY PANE (Uses original app.js IDs) -->
-                            <div class="tab-pane fade show active" id="psaInvPane">
-                                <div class="alert alert-primary border-primary shadow-sm mb-4">
-                                    <i class="fa fa-info-circle me-2"></i> Upload an Excel file (.xlsx) with columns: <b>serial_no</b>, <b>property_no</b>, <b>description</b>, <b>asset_no</b>. This saves directly to the PSA `inventory` table.
-                                </div>
-                                
-                                <input type="file" id="inventoryFile" class="form-control form-control-lg mb-3 border-primary" accept=".xlsx">
-                                <button id="processImportBtn" class="btn btn-primary text-white fw-bold w-100 py-2 mb-3 shadow-sm"><i class="fa fa-magnifying-glass me-2"></i> PREVIEW PSA EXCEL DATA</button>
-                                
-                                <div id="importPreview" class="table-responsive border rounded mb-3 shadow-sm border-primary custom-scrollbar" style="max-height: 300px; display:none;">
-                                    <table class="table table-sm table-striped mb-0 bg-white text-nowrap">
-                                        <thead class="table-primary sticky-header">
-                                            <tr><th>Serial</th><th>Property No.</th><th>Description</th><th>Asset</th></tr>
-                                        </thead>
-                                        <tbody id="importBody"></tbody>
-                                    </table>
-                                </div>
-                                <button id="saveBulkBtn" class="btn btn-success w-100 py-2 fw-bold shadow mb-4" style="display:none;"><i class="fa fa-upload me-2"></i> SAVE TO PSA MASTER INVENTORY</button>
-
-                                <hr class="my-4">
-                                <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-download me-2"></i>Export Operations</h6>
-                                <button id="exportInventoryBtn" class="btn btn-outline-primary w-100 py-2 fw-bold shadow-sm"><i class="fa fa-file-excel me-2"></i> DOWNLOAD PSA INVENTORY TO EXCEL</button>
-                            </div>
-
-                            <!-- PHILSYS INVENTORY PANE (Uses separate logic at the bottom of this file) -->
-                            <div class="tab-pane fade" id="philsysInvPane">
-                                <div class="alert alert-success border-success shadow-sm mb-4">
-                                    <i class="fa fa-info-circle me-2"></i> Upload your <b>REGISTRATION KITS MONITORING</b> Excel file directly. The system automatically reads columns like: <i>Luggage Kit Serial Number, FP Scanner Serial Number, IRIS Scanner Serial Number, etc.</i>
-                                </div>
-                                
-                                <input type="file" id="philsysInventoryFile" class="form-control form-control-lg mb-3 border-success" accept=".xlsx">
-                                <button id="philsysProcessImportBtn" class="btn btn-success text-white fw-bold w-100 py-2 mb-3 shadow-sm"><i class="fa fa-magnifying-glass me-2"></i> PREVIEW PHILSYS EXCEL DATA</button>
-                                
-                                <div id="philsysImportPreview" class="table-responsive border rounded mb-3 shadow-sm border-success custom-scrollbar" style="max-height: 300px; display:none;">
-                                    <table class="table table-sm table-striped mb-0 bg-white text-nowrap" style="font-size: 0.75rem;">
-                                        <thead class="table-success sticky-header text-dark">
-                                            <tr><th>Kit Serial</th><th>Laptop Model</th><th>Laptop SN</th><th>Scanner</th><th>Iris</th><th>Webcam</th><th>Doc Scan</th><th>Monitor</th><th>Printer</th></tr>
-                                        </thead>
-                                        <tbody id="philsysImportBody"></tbody>
-                                    </table>
-                                </div>
-                                <button id="philsysSaveBulkBtn" class="btn btn-success w-100 py-2 fw-bold shadow mb-4" style="display:none;"><i class="fa fa-upload me-2"></i> SAVE TO PHILSYS MASTER INVENTORY</button>
-
-                                <hr class="my-4">
-                                <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-download me-2"></i>Export Operations</h6>
-                                <button id="philsysExportBtn" class="btn btn-outline-success w-100 py-2 fw-bold shadow-sm"><i class="fa fa-file-excel me-2"></i> DOWNLOAD PHILSYS INVENTORY TO EXCEL</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
             </div>
         </div>
     </div>
@@ -759,82 +722,27 @@
         </div>
     </div>
 
-    <!-- INVENTORY LOOKUP MODAL (PSA) -->
+    <!-- INVENTORY LOOKUP MODAL (Hidden structure kept to ensure app.js runs cleanly without "null element" errors) -->
     <div class="modal fade" id="inventoryLookupModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title fw-bold"><i class="fa fa-box-open me-2"></i>Select Item from Inventory</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body bg-light p-4">
-                    <!-- Bulk Auto-Add Container -->
-                    <div id="inventoryBulkSection" class="bg-white p-3 mb-4 rounded border shadow-sm">
-                        <label class="small fw-bold text-success mb-2"><i class="fa fa-layer-group me-1"></i>SMART BULK AUTO-ADD</label>
-                        <div class="row g-2 mb-2">
-                            <div class="col-sm-6">
-                                <select id="bulkCategorySelect" class="form-select border-success">
-                                    <option value="" selected>Any Category...</option>
-                                    <option value="Tablets">Tablets</option>
-                                    <option value="Laptops">Laptops</option>
-                                    <option value="Desktops">Desktops/CPUs</option>
-                                    <option value="Monitors">Monitors</option>
-                                    <option value="Peripherals">Peripherals</option>
-                                </select>
-                            </div>
-                            <div class="col-sm-6">
-                                <input type="text" id="bulkBrandInput" class="form-control border-success" placeholder="Specific Brand (e.g. Samsung)">
-                            </div>
-                        </div>
-                        <div class="input-group mt-2">
-                            <span class="input-group-text bg-white border-success fw-bold">Qty:</span>
-                            <input type="number" id="bulkQtyInput" class="form-control border-success text-center" value="1" min="1" max="50" style="max-width: 100px;">
-                            <button id="btnBulkAdd" class="btn btn-success fw-bold px-4"><i class="fa fa-plus me-1"></i> Auto-Add</button>
-                        </div>
-                        <div id="bulkStatusMsg" class="small text-muted mt-2 fst-italic">Select a type, optionally type a brand, and choose quantity.</div>
-                    </div>
-
-                    <div class="mb-3 d-flex gap-2 align-items-center">
-                        <span class="fw-bold text-secondary text-nowrap"><i class="fa fa-filter me-1"></i>Filter Search:</span>
-                        <select id="inventoryCategoryFilter" class="form-select border-primary shadow-sm" style="max-width: 250px;">
-                            <option value="All">All Categories</option>
-                            <option value="Tablets">Tablets</option>
-                            <option value="Laptops">Laptops</option>
-                            <option value="Desktops">Desktops & CPUs</option>
-                            <option value="Monitors">Monitors</option>
-                            <option value="Peripherals">Peripherals</option>
-                        </select>
-                    </div>
-
-                    <div class="input-group mb-3 sticky-top shadow-sm" style="top: -24px; z-index: 1020;">
-                        <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-primary"></i></span>
-                        <input type="text" id="inventorySearchInput" class="form-control border-start-0 py-2" placeholder="Type to search by Serial, Description, or Asset Tag..." autocomplete="off">
-                    </div>
-                    
-                    <div class="table-responsive bg-white rounded border shadow-sm custom-scrollbar">
-                        <table class="table table-hover mb-0 align-middle text-nowrap">
-                            <thead class="table-light text-muted">
-                                <tr><th>Serial No.</th><th>Description</th><th>Asset Tag</th><th></th></tr>
-                            </thead>
-                            <tbody id="inventoryLookupBody"></tbody>
-                        </table>
-                    </div>
-                </div>
+        <div class="modal-dialog"><div class="modal-content"><div class="modal-body">
+            <div style="display:none;">
+                <select id="bulkCategorySelect"></select><input type="text" id="bulkBrandInput"><input type="number" id="bulkQtyInput"><button id="btnBulkAdd"></button>
+                <select id="inventoryCategoryFilter"></select><input type="text" id="inventorySearchInput"><tbody id="inventoryLookupBody"></tbody>
             </div>
-        </div>
+        </div></div></div>
     </div>
-
+    
     <!-- PHILSYS LOOKUP MODAL -->
     <div class="modal fade" id="philsysLookupModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-success text-white">
+                <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold"><i class="fa fa-suitcase-rolling me-2"></i>Select PhilSys Kit from Inventory</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body bg-light p-4">
                     <div class="input-group mb-3 sticky-top shadow-sm" style="top: -24px; z-index: 1020;">
-                        <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-success"></i></span>
+                        <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-primary"></i></span>
                         <input type="text" id="philsysSearchInput" class="form-control border-start-0 py-2" placeholder="Type to search by Kit Serial, Laptop Model, or SN..." autocomplete="off">
                     </div>
                     
@@ -868,7 +776,70 @@
         </div>
     </div>
 
-    <!-- UI & DATE SCRIPTS -->
+    <!-- NEW: EDIT PHILSYS KIT COMPONENTS MODAL -->
+    <div class="modal fade" id="editKitModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold"><i class="fa fa-pen-to-square me-2"></i> Edit Kit Components</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body bg-light p-4">
+                    <div class="alert alert-warning border-warning shadow-sm mb-4 small">
+                        <i class="fa fa-triangle-exclamation me-2"></i> You are modifying the component serials for this specific requested Kit. This will update the Gate Pass record in the database.
+                    </div>
+                    <form id="editKitForm">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="small fw-bold text-secondary">Laptop Model</label>
+                                <input type="text" id="eLaptopModel" class="form-control">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="small fw-bold text-secondary">Laptop Serial No.</label>
+                                <input type="text" id="eLaptopSerial" class="form-control">
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-secondary">Scanner Serial No.</label>
+                                <input type="text" id="eScannerSerial" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-secondary">Iris Scanner SN</label>
+                                <input type="text" id="eIrisSerial" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-secondary">Webcam SN</label>
+                                <input type="text" id="eWebcamSerial" class="form-control">
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-secondary">Doc Scanner SN</label>
+                                <input type="text" id="eDocScannerSerial" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-secondary">Monitor SN</label>
+                                <input type="text" id="eMonitorSerial" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-secondary">Printer SN</label>
+                                <input type="text" id="ePrinterSerial" class="form-control">
+                            </div>
+
+                            <div class="col-12 mt-4">
+                                <button type="button" id="btnSaveKitEdits" class="btn btn-warning w-100 fw-bold py-2 shadow-sm fs-6">
+                                    <i class="fa fa-save me-2"></i> SAVE CHANGES TO DATABASE
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- PHIL-SYS BRIDGE & UI SCRIPTS               -->
+    <!-- ========================================== -->
     <script>
         // 1. Sidebar Standalone Navigation Logic
         document.addEventListener('DOMContentLoaded', () => {
@@ -879,7 +850,6 @@
             navButtons.forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
-
                     navButtons.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active'); 
 
@@ -892,14 +862,10 @@
                     const targetView = document.getElementById(targetId);
                     if (targetView) {
                         targetView.style.display = 'block';
-                        setTimeout(() => {
-                            targetView.classList.add('active-view');
-                        }, 10);
+                        setTimeout(() => { targetView.classList.add('active-view'); }, 10);
                     }
 
-                    if (topbarTitle) {
-                        topbarTitle.innerText = btn.innerText.trim();
-                    }
+                    if (topbarTitle) topbarTitle.innerText = btn.innerText.trim();
                 });
             });
         });
@@ -907,12 +873,8 @@
         // 2. Secure Date Logic
         (async function secureDate() {
             const dateInput = document.getElementById('dueDate');
-            
             let serverDate = new Intl.DateTimeFormat('en-CA', { 
-                timeZone: 'Asia/Manila', 
-                year: 'numeric', 
-                month: '2-digit', 
-                day: '2-digit' 
+                timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' 
             }).format(new Date());
 
             if(dateInput) dateInput.setAttribute('min', serverDate);
@@ -924,9 +886,7 @@
                     serverDate = data.datetime.split('T')[0];
                     if(dateInput) dateInput.setAttribute('min', serverDate);
                 }
-            } catch (e) {
-                console.warn("Time API failed, relying on local Manila time fallback.");
-            }
+            } catch (e) { console.warn("Time API failed, relying on local Manila time fallback."); }
 
             if(dateInput) {
                 dateInput.addEventListener('change', () => {
@@ -938,15 +898,36 @@
             }
         })();
 
-        // 3. PHIL-SYS LUGGAGE KIT BRIDGE SCRIPT (For Admin Dashboard)
+        // 3. PHIL-SYS LUGGAGE KIT BRIDGE SCRIPT
         document.addEventListener('DOMContentLoaded', () => {
+            
             setTimeout(() => {
                 const btnCompileAndAddKit = document.getElementById('btnCompileAndAddKit');
                 const realAddToCartBtn = document.getElementById('addToCartBtn');
+                const btnCancelKitForm = document.getElementById('btnCancelKitForm');
 
+                // FUNCTION: Clear PhilSys Form Fields
+                const clearPhilSysFields = () => {
+                    document.getElementById('kitSerial').value = '';
+                    document.getElementById('laptopModel').value = '';
+                    document.getElementById('laptopSerial').value = '';
+                    document.getElementById('scannerSerial').value = '';
+                    document.getElementById('irisSerial').value = '';
+                    document.getElementById('webcamSerial').value = '';
+                    document.getElementById('docScannerSerial').value = '';
+                    document.getElementById('monitorSerial').value = '';
+                    document.getElementById('printerSerial').value = '';
+                };
+
+                // EVENT: Cancel / Clear Form button
+                if (btnCancelKitForm) {
+                    btnCancelKitForm.addEventListener('click', clearPhilSysFields);
+                }
+
+                // EVENT: Compile and Add to Cart
                 if (btnCompileAndAddKit && realAddToCartBtn) {
                     btnCompileAndAddKit.addEventListener('click', () => {
-                        // Validate Main Identifier
+                        // 1. Validate Main Identifier
                         const kitSerial = document.getElementById('kitSerial').value.trim();
                         if (!kitSerial) {
                             alert("Please enter the main Luggage Kit Serial Number.");
@@ -954,7 +935,7 @@
                             return;
                         }
 
-                        // Gather components into a single description string
+                        // 2. Gather components into a single description string
                         const parts = [];
                         
                         const laptopModel = document.getElementById('laptopModel').value.trim();
@@ -984,50 +965,31 @@
                         // Create the final description 
                         const finalDescription = parts.length > 0 ? parts.join(' | ') : 'Luggage Kit (No internal serials specified)';
 
-                        // Populate the standard PSA fields that your original app.js uses
+                        // 3. Populate the hidden fields that your original app.js uses
                         document.getElementById('serial').value = kitSerial;
                         document.getElementById('desc').value = finalDescription;
                         document.getElementById('propertyNum').value = 'N/A'; 
                         document.getElementById('asset').value = 'Luggage Kit';
 
-                        // Programmatically click the original "Add to Cart" button so app.js runs its standard logic
+                        // 4. Programmatically click the hidden original "Add to Cart" button so app.js runs its standard logic!
                         realAddToCartBtn.click();
 
-                        // Clear the PhilSys form for the next kit (small timeout lets app.js read values first)
-                        setTimeout(() => {
-                            // Clear standard fields just in case
-                            document.getElementById('serial').value = '';
-                            document.getElementById('desc').value = '';
-                            document.getElementById('propertyNum').value = ''; 
-                            document.getElementById('asset').value = '';
-
-                            // Clear PhilSys fields
-                            document.getElementById('kitSerial').value = '';
-                            document.getElementById('laptopModel').value = '';
-                            document.getElementById('laptopSerial').value = '';
-                            document.getElementById('scannerSerial').value = '';
-                            document.getElementById('irisSerial').value = '';
-                            document.getElementById('webcamSerial').value = '';
-                            document.getElementById('docScannerSerial').value = '';
-                            document.getElementById('monitorSerial').value = '';
-                            document.getElementById('printerSerial').value = '';
-                        }, 100);
+                        // 5. Clear the PhilSys form for the next kit 
+                        setTimeout(clearPhilSysFields, 100);
                     });
                 }
             }, 500); 
         });
     </script>
-
-    <!-- Dedicated PhilSys Inventory Script & Admin Logic -->
+    
+    <!-- 4. PHILSYS LOOKUP & EDIT LOGIC -->
     <script type="module">
-        // Import isAnyAdmin to dynamically verify Admin privileges
-        import { supabase, isAnyAdmin } from './config.js';
+        import { supabase } from './config.js';
         
         // ==========================================
-        // ADMIN UI PRIVILEGE CHECK & SCROLL SYNC
+        // SCROLL SYNC LOGIC FOR TABLE
         // ==========================================
-        document.addEventListener('DOMContentLoaded', async () => {
-            // Setup dual-scrollbars for the PhilSys Lookup Table
+        document.addEventListener('DOMContentLoaded', () => {
             const topScroll = document.getElementById('philsysTopScroll');
             const tableContainer = document.getElementById('philsysTableContainer');
             let isSyncingLeftScroll = false;
@@ -1050,41 +1012,15 @@
                     isSyncingRightScroll = false;
                 });
             }
-
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session && session.user && session.user.email) {
-                    if (isAnyAdmin(session.user.email)) {
-                        // 1. Unhide Issuance Type Tabs (allows Admin to pick PSA vs PhilSys)
-                        const itemTabs = document.getElementById('itemEntryTabs');
-                        if (itemTabs) itemTabs.style.display = 'flex';
-                        
-                        // 2. Unhide Master Inventory Navigation button
-                        const invNav = document.getElementById('navMasterInventory');
-                        if (invNav) invNav.style.display = 'flex';
-                    }
-                }
-            } catch (err) {
-                console.error("Error verifying admin UI privileges:", err);
-            }
         });
 
-        // ==========================================
-        // EXCEL IMPORT & LOOKUP LOGIC
-        // ==========================================
-        let philsysParsedData = [];
         let allPhilSysKitsForLookup = [];
 
         document.addEventListener('DOMContentLoaded', () => {
-            const processBtn = document.getElementById('philsysProcessImportBtn');
-            const saveBtn = document.getElementById('philsysSaveBulkBtn');
-            const exportBtn = document.getElementById('philsysExportBtn');
-            
             const btnOpenPhilSysLookup = document.getElementById('btnOpenPhilSysLookup');
             const philsysLookupModalElement = document.getElementById('philsysLookupModal');
             let philsysLookupBsModal = null;
             
-            // 1. PHILSYS LOOKUP MODAL LOGIC
             if (btnOpenPhilSysLookup && philsysLookupModalElement) {
                 btnOpenPhilSysLookup.addEventListener('click', async () => {
                     if (!philsysLookupBsModal) {
@@ -1100,10 +1036,22 @@
                 tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4"><i class="fa fa-spinner fa-spin me-2"></i>Loading kits from database...</td></tr>';
                 
                 try {
+                    // 1. Fetch currently active/pending gate passes to hide unavailable kits
+                    const { data: activePasses, error: passError } = await supabase
+                        .from('gate_passes')
+                        .select('serial')
+                        .in('status', ['OUT', 'RELEASING', 'PENDING_PROPERTY', 'PENDING_INSPECTION', 'PENDING_OIC']);
+                    
+                    if (passError) throw passError;
+                    const activeSerials = new Set((activePasses || []).map(p => String(p.serial).trim()));
+
+                    // 2. Fetch PhilSys inventory
                     const { data, error } = await supabase.from('philsys_inventory').select('*').order('created_at', { ascending: false });
                     if (error) throw error;
                     
-                    allPhilSysKitsForLookup = data || [];
+                    // 3. Filter out kits that are currently out or requested
+                    allPhilSysKitsForLookup = (data || []).filter(kit => !activeSerials.has(String(kit.kit_serial).trim()));
+                    
                     renderPhilSysLookupTable(allPhilSysKitsForLookup);
                 } catch (error) {
                     tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-4">Error: ${error.message}</td></tr>`;
@@ -1124,10 +1072,10 @@
 
                 data.forEach(kit => {
                     const tr = document.createElement('tr');
-                    // Placed "Action" as the first column, adding sticky classes so it doesn't move when scrolling horizontally
+                    // Ensure the action td is pinned to the left
                     tr.innerHTML = `
                         <td class="position-sticky start-0 bg-white text-center shadow-sm border-end" style="z-index: 1;">
-                            <button class="btn btn-sm btn-success fw-bold select-kit-btn px-3"><i class="fa fa-check me-1"></i>Select</button>
+                            <button class="btn btn-sm btn-primary fw-bold select-kit-btn px-3"><i class="fa fa-check me-1"></i>Select</button>
                         </td>
                         <td class="fw-bold">${kit.kit_serial || ''}</td>
                         <td>${kit.laptop_model || ''}</td>
@@ -1158,7 +1106,7 @@
                     tbody.appendChild(tr);
                 });
 
-                // Update the Top Scrollbar dummy width after rendering the table X
+                // Update the Top Scrollbar dummy width after rendering the table
                 setTimeout(() => {
                     const tableEl = document.getElementById('philsysLookupTableElement');
                     const topScrollContent = document.getElementById('philsysTopScrollContent');
@@ -1180,113 +1128,109 @@
                     renderPhilSysLookupTable(filtered);
                 });
             }
+        });
 
-            // 2. EXCEL IMPORT/EXPORT LOGIC
-            if(processBtn) {
-                processBtn.addEventListener('click', () => {
-                    const fileInput = document.getElementById('philsysInventoryFile');
-                    const file = fileInput.files[0];
-                    if(!file) return alert("Please select an Excel file for PhilSys first.");
-
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, {type: 'array'});
-                        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(sheet);
-
-                        if(jsonData.length === 0) return alert("Excel file is empty.");
-
-                        // Map columns safely handling the exact headers from your uploaded Excel file
-                        philsysParsedData = jsonData.map(row => ({
-                            kit_serial: String(row['Luggage Kit Serial Number'] || row['kit_serial'] || '').trim(),
-                            laptop_model: String(row['Laptop Model'] || row['laptop_model'] || '').trim(),
-                            laptop_sn: String(row['Laptop Serial Number'] || row['laptop_sn'] || '').trim(),
-                            scanner_sn: String(row['FP Scanner Serial Number'] || row['scanner_sn'] || '').trim(),
-                            iris_sn: String(row['IRIS Scanner Serial Number'] || row['iris_sn'] || '').trim(),
-                            webcam_sn: String(row['WebCam Serial Number'] || row['webcam_sn'] || '').trim(),
-                            doc_scanner_sn: String(row['Document Scanner Serial Number'] || row['doc_scanner_sn'] || '').trim(),
-                            monitor_sn: String(row['Monitor Serial Number'] || row['monitor_sn'] || '').trim(),
-                            printer_sn: String(row['Printer Serial Number'] || row['printer_sn'] || '').trim()
-                        })).filter(row => row.kit_serial !== '');
-
-                        const tbody = document.getElementById('philsysImportBody');
-                        tbody.innerHTML = '';
-                        philsysParsedData.forEach(row => {
-                            tbody.innerHTML += `<tr>
-                                <td>${row.kit_serial}</td>
-                                <td>${row.laptop_model}</td>
-                                <td>${row.laptop_sn}</td>
-                                <td>${row.scanner_sn}</td>
-                                <td>${row.iris_sn}</td>
-                                <td>${row.webcam_sn}</td>
-                                <td>${row.doc_scanner_sn}</td>
-                                <td>${row.monitor_sn}</td>
-                                <td>${row.printer_sn}</td>
-                            </tr>`;
-                        });
-
-                        document.getElementById('philsysImportPreview').style.display = 'block';
-                        saveBtn.style.display = 'block';
-                    };
-                    reader.readAsArrayBuffer(file);
-                });
-            }
-
-            // Save Processed Data to PhilSys DB
-            if(saveBtn) {
-                saveBtn.addEventListener('click', async () => {
-                    if(philsysParsedData.length === 0) return;
-                    saveBtn.disabled = true; 
-                    saveBtn.innerText = 'Saving to Database...';
-
-                    try {
-                        const { error } = await supabase.from('philsys_inventory').upsert(philsysParsedData, { onConflict: 'kit_serial' });
-                        if(error) throw error;
-                        
-                        alert("PhilSys Inventory successfully updated!");
-                        document.getElementById('philsysImportPreview').style.display = 'none';
-                        saveBtn.style.display = 'none';
-                        document.getElementById('philsysInventoryFile').value = '';
-                        philsysParsedData = [];
-                    } catch (err) {
-                        alert("Error saving: " + err.message);
-                    }
+        // ==============================================================
+        // EDIT KIT LOGIC (CALLED FROM RENDER.JS)
+        // ==============================================================
+        
+        // Expose globally so render.js can trigger it
+        window.openEditKitModal = function(itemId, currentDescription) {
+            window.currentEditItemId = itemId;
+            
+            // Clear fields first
+            const fields = ['eLaptopModel', 'eLaptopSerial', 'eScannerSerial', 'eIrisSerial', 'eWebcamSerial', 'eDocScannerSerial', 'eMonitorSerial', 'ePrinterSerial'];
+            fields.forEach(f => document.getElementById(f).value = '');
+            
+            // Parse existing description to populate the form
+            // Expected format: Laptop: Model Name [SN: 123] | Scanner [SN: 456] | ...
+            if (currentDescription) {
+                const parts = currentDescription.split('|').map(p => p.trim());
+                parts.forEach(part => {
+                    const snMatch = part.match(/\[SN:\s*(.*?)\]/);
+                    const sn = snMatch ? snMatch[1] : '';
                     
-                    saveBtn.disabled = false; 
-                    saveBtn.innerHTML = '<i class=\"fa fa-upload me-2\"></i> SAVE TO PHILSYS MASTER INVENTORY';
+                    if (part.startsWith('Laptop:')) {
+                        const modelMatch = part.match(/Laptop:\s*(.*?)\s*\[/);
+                        const model = modelMatch ? modelMatch[1].trim() : '';
+                        if (model !== 'N/A') document.getElementById('eLaptopModel').value = model;
+                        if (sn !== 'N/A') document.getElementById('eLaptopSerial').value = sn;
+                    }
+                    else if (part.startsWith('Scanner')) document.getElementById('eScannerSerial').value = sn;
+                    else if (part.startsWith('Iris')) document.getElementById('eIrisSerial').value = sn;
+                    else if (part.startsWith('Webcam')) document.getElementById('eWebcamSerial').value = sn;
+                    else if (part.startsWith('Doc Scan')) document.getElementById('eDocScannerSerial').value = sn;
+                    else if (part.startsWith('Monitor')) document.getElementById('eMonitorSerial').value = sn;
+                    else if (part.startsWith('Printer')) document.getElementById('ePrinterSerial').value = sn;
                 });
             }
+            
+            const modalEl = document.getElementById('editKitModal');
+            const modal = new bootstrap.Modal(modalEl);
+            modal.show();
+        };
 
-            // Direct Export of PhilSys DB
-            if(exportBtn) {
-                exportBtn.addEventListener('click', async () => {
-                    exportBtn.disabled = true;
-                    exportBtn.innerText = 'Downloading...';
-                    try {
-                        const { data, error } = await supabase.from('philsys_inventory').select('kit_serial, laptop_model, laptop_sn, scanner_sn, iris_sn, webcam_sn, doc_scanner_sn, monitor_sn, printer_sn');
-                        if(error) throw error;
-                        if(!data || data.length === 0) {
-                            alert("No data found in PhilSys Inventory.");
-                            exportBtn.disabled = false;
-                            exportBtn.innerHTML = '<i class="fa fa-file-excel me-2"></i> DOWNLOAD PHILSYS INVENTORY TO EXCEL';
-                            return;
-                        }
+        document.getElementById('btnSaveKitEdits')?.addEventListener('click', async () => {
+            if (!window.currentEditItemId) return alert("System Error: No item selected.");
+            
+            const btn = document.getElementById('btnSaveKitEdits');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<i class="fa fa-spinner fa-spin me-2"></i> SAVING...`;
+            btn.disabled = true;
 
-                        const ws = XLSX.utils.json_to_sheet(data);
-                        const wb = XLSX.utils.book_new();
-                        XLSX.utils.book_append_sheet(wb, ws, "PhilSys_Kits");
-                        XLSX.writeFile(wb, "PhilSys_Master_Inventory.xlsx");
-                    } catch (err) {
-                        alert("Export error: " + err.message);
-                    }
-                    exportBtn.disabled = false;
-                    exportBtn.innerHTML = '<i class="fa fa-file-excel me-2"></i> DOWNLOAD PHILSYS INVENTORY TO EXCEL';
-                });
+            try {
+                // Re-compile the components string
+                const parts = [];
+                const laptopModel = document.getElementById('eLaptopModel').value.trim();
+                const laptopSerial = document.getElementById('eLaptopSerial').value.trim();
+                if (laptopModel || laptopSerial) parts.push(`Laptop: ${laptopModel || 'N/A'} [SN: ${laptopSerial || 'N/A'}]`);
+
+                const scanner = document.getElementById('eScannerSerial').value.trim();
+                if (scanner) parts.push(`Scanner [SN: ${scanner}]`);
+
+                const iris = document.getElementById('eIrisSerial').value.trim();
+                if (iris) parts.push(`Iris [SN: ${iris}]`);
+
+                const webcam = document.getElementById('eWebcamSerial').value.trim();
+                if (webcam) parts.push(`Webcam [SN: ${webcam}]`);
+
+                const docScan = document.getElementById('eDocScannerSerial').value.trim();
+                if (docScan) parts.push(`Doc Scan [SN: ${docScan}]`);
+
+                const monitor = document.getElementById('eMonitorSerial').value.trim();
+                if (monitor) parts.push(`Monitor [SN: ${monitor}]`);
+
+                const printer = document.getElementById('ePrinterSerial').value.trim();
+                if (printer) parts.push(`Printer [SN: ${printer}]`);
+
+                const finalDescription = parts.length > 0 ? parts.join(' | ') : 'Luggage Kit (No internal serials specified)';
+
+                // Update Supabase
+                const { error } = await supabase
+                    .from('gate_passes')
+                    .update({ description: finalDescription })
+                    .eq('id', window.currentEditItemId);
+                
+                if (error) throw error;
+                
+                // Close modal and refresh UI
+                const modalEl = document.getElementById('editKitModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if(modal) modal.hide();
+                
+                alert("Kit components updated successfully!");
+                if(window.refreshTableData) window.refreshTableData();
+
+            } catch(e) {
+                alert("Failed to update kit: " + e.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         });
     </script>
 
+    <!-- BOOTSTRAP AND MAIN APP LOGIC -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="app.js"></script>
 </body>
