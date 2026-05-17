@@ -1,7 +1,8 @@
 // PDF & Excel Export Logic
 import { state } from './state.js';
-import { ADMIN_ROLES, isAnyAdmin } from './config.js';
+import { canManageFiles } from './config.js';
 import { showConfirm } from './utils.js';
+import { supabase } from './config.js';
 
 /**
  * PHIL-SYS KIT EXPANDER
@@ -94,12 +95,75 @@ function getSelectedItems() {
     if (!container) return [];
     
     const checkedBoxes = container.querySelectorAll('.export-check:checked');
-    if (!checkedBoxes.length) { alert("Select at least one batch from the table."); return []; }
+    const checkedItemBoxes = container.querySelectorAll('.export-item-check:checked');
+    if (!checkedBoxes.length && !checkedItemBoxes.length) { alert("Select at least one batch or serial number from the table."); return []; }
     
     const selectedBatchIds = Array.from(checkedBoxes).map(cb => cb.value);
-    const filteredItems = sourceData.filter(item => selectedBatchIds.includes(item.unique_id));
+    const selectedItemIds = Array.from(checkedItemBoxes).map(cb => cb.value);
+    const filteredItems = sourceData.filter(item => selectedBatchIds.includes(item.unique_id) || selectedItemIds.includes(String(item.id)));
     
     return filteredItems.sort((a, b) => String(a.asset_no || '').localeCompare(String(b.asset_no || ''), undefined, { numeric: true }));
+}
+
+function normalize(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function isOwnedByCurrentUser(item) {
+    const user = state.currentUser || {};
+    const email = normalize(user.email);
+    const names = new Set([
+        normalize(state.currentUserName),
+        normalize(user.name),
+        normalize(user.user_metadata?.name),
+        normalize(user.user_metadata?.full_name)
+    ].filter(Boolean));
+
+    return normalize(item.issuer_email) === email || names.has(normalize(item.borrower));
+}
+
+function canExportItems(items) {
+    if (canManageFiles(state.currentUser)) return true;
+    if (!items.length) return false;
+    return items.every(item => item.status === 'OUT' && isOwnedByCurrentUser(item));
+}
+
+function requireExportPermission(items) {
+    if (canExportItems(items)) return true;
+    alert("You can only export your own approved active gate pass.");
+    return false;
+}
+
+function updateExportModalOptions() {
+    const gatePassBtn = document.getElementById('btnExportGatePass');
+    if (gatePassBtn) gatePassBtn.style.display = canManageFiles(state.currentUser) ? '' : 'none';
+}
+
+async function getStationApproverNames() {
+    const defaults = {
+        property: 'JENOR B. BLAS',
+        inspection: 'MARY ANNE G. BASILIO',
+        oic: 'MARICEL M. CARAGAN'
+    };
+
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('name, department, role')
+            .eq('role', 'admin')
+            .in('department', ['Property', 'Inspection', 'OIC']);
+
+        if (error || !data) return defaults;
+
+        const byDept = new Map(data.map(user => [String(user.department || '').toLowerCase(), user.name]));
+        return {
+            property: String(byDept.get('property') || defaults.property).toUpperCase(),
+            inspection: String(byDept.get('inspection') || defaults.inspection).toUpperCase(),
+            oic: String(byDept.get('oic') || defaults.oic).toUpperCase()
+        };
+    } catch (error) {
+        return defaults;
+    }
 }
 
 export function openUnifiedExportModal() {
@@ -109,9 +173,12 @@ export function openUnifiedExportModal() {
 
     const borrowers = new Set(items.map(i => (i.borrower || "").trim().toLowerCase()));
     if (borrowers.size > 1) return alert("Error: Multiple borrowers detected. Please select items for one person only.");
+    const gatePasses = new Set(items.map(i => i.unique_id));
+    if (!canManageFiles(state.currentUser) && gatePasses.size > 1) return alert("Please select serial numbers from one gate pass only.");
 
     const titleEl = document.getElementById('exportModalTitle');
     if(titleEl) titleEl.innerText = `Selected: ${items.length} Items`;
+    updateExportModalOptions();
 
     const exportModalEl = document.getElementById('exportModal');
     if (exportModalEl) bootstrap.Modal.getOrCreateInstance(exportModalEl).show();
@@ -131,15 +198,16 @@ export function triggerExportModal(batchId, status) {
     state.tempExportItems = items;
     state.currentExportContext = status.toLowerCase(); 
     document.getElementById('exportModalTitle').innerText = `Exporting Batch: ${batchId}`;
+    updateExportModalOptions();
     const exportModalEl = document.getElementById('exportModal');
     if (exportModalEl) bootstrap.Modal.getOrCreateInstance(exportModalEl).show();
 }
 
 // --- EXCEL EXPORT ---
 export async function exportExcel() {
-    if (state.currentUser.email !== ADMIN_ROLES.STATION_1 && state.currentUser.email !== ADMIN_ROLES.STATION_4) return alert("Unauthorized.");
     let rawItems = state.tempExportItems ? state.tempExportItems : getSelectedItems();
     if (!rawItems.length) return;
+    if (!requireExportPermission(rawItems)) return;
 
     const items = expandPhilSysItems(rawItems);
     const borrowerName = items[0].borrower || "Unknown";
@@ -169,9 +237,10 @@ export async function exportExcel() {
 
 // --- GATE PASS PDF ---
 export async function exportGatePass() {
-    if (state.currentUser.email !== ADMIN_ROLES.STATION_1 && state.currentUser.email !== ADMIN_ROLES.STATION_4) return alert("Unauthorized.");
+    if (!canManageFiles(state.currentUser)) return alert("Gate Pass PDF export is only available to admins.");
     let rawItems = state.tempExportItems ? state.tempExportItems : getSelectedItems();
     if (rawItems.length === 0) return;
+    if (!requireExportPermission(rawItems)) return;
 
     const items = expandPhilSysItems(rawItems);
     const borrowerName = items[0].borrower || "Unknown";
@@ -184,6 +253,7 @@ export async function exportGatePass() {
     const doc = new jsPDF({ compress: true });
     const firstItem = items[0];
     const gatePassNo = firstItem.unique_id.replace("PSA-", ""); 
+    const approvers = await getStationApproverNames();
 
     const stampFooter = () => {
         const pageHeight = doc.internal.pageSize.height;
@@ -243,24 +313,34 @@ export async function exportGatePass() {
         margin: { bottom: 40 }, 
         styles: { textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3, fontSize: 9, valign: 'middle', halign: 'center' },
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3, fontStyle: 'bold' },
-        columnStyles: { 0: { halign: 'left', cellWidth: 50 } }
+        columnStyles: { 0: { halign: 'left', cellWidth: 50 } },
+        didDrawPage: function() { stampFooter(); }
     });
 
     let finalY = doc.lastAutoTable.finalY + 10;
     if (finalY + 120 > doc.internal.pageSize.height) { doc.addPage(); finalY = 20; }
     doc.text("Remarks:", 15, finalY); finalY += 6; doc.line(15, finalY, 195, finalY); finalY += 8; doc.line(15, finalY, 195, finalY); finalY += 10;
 
-    doc.setFont("helvetica", "bold"); doc.text("Checked / Inspected by:", 15, finalY); finalY += 15;
     const drawSig = (name, title, x, y) => {
         doc.setFont("helvetica", "bold"); doc.text(name, x, y, { align: "center" });
         const w = Math.max(doc.getTextWidth(name) + 10, 60); doc.line(x - (w/2), y + 1.5, x + (w/2), y + 1.5);
         doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(doc.splitTextToSize(title, w + 30), x, y + 6, { align: "center" });
     };
 
-    drawSig("JENOR B. BLAS", "Property and Supply Officer", 60, finalY);
-    drawSig("MARY ANNE G. BASILIO", "Inspection Officer", 150, finalY);
+    // Requested by — borrower signature line above Checked / Inspected by
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    doc.text("Requested by:", 15, finalY);
+    finalY += 15;
+    drawSig(borrowerName.toUpperCase(), "Signature over Printed Name", 55, finalY);
+    finalY += 25;
+
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    doc.text("Checked / Inspected by:", 15, finalY); finalY += 15;
+
+    drawSig(approvers.property, "Property and Supply Officer", 60, finalY);
+    drawSig(approvers.inspection, "Inspection Officer", 150, finalY);
     finalY += 25; doc.text("Approved by:", 105, finalY - 12, { align: "center" });
-    drawSig("MARICEL M. CARAGAN", "Supervising Statistical Specialist\nOfficer-in-Charge, PSA NCR PSO V", 105, finalY);
+    drawSig(approvers.oic, "Supervising Statistical Specialist\nOfficer-in-Charge, PSA NCR PSO V", 105, finalY);
     finalY += 25; drawSig("", "Guard on Duty", 105, finalY);
 
     const pages = doc.internal.getNumberOfPages();
@@ -270,9 +350,9 @@ export async function exportGatePass() {
 
 // --- ACKNOWLEDGEMENT RECEIPT ---
 export async function exportAckReceipt() {
-    if (state.currentUser.email !== ADMIN_ROLES.STATION_1 && state.currentUser.email !== ADMIN_ROLES.STATION_4) return alert("Unauthorized.");
     let rawItems = state.tempExportItems ? state.tempExportItems : getSelectedItems();
     if (rawItems.length === 0) return;
+    if (!requireExportPermission(rawItems)) return;
 
     const items = expandPhilSysItems(rawItems);
     const borrowers = new Set(items.map(i => (i.borrower || "").trim().toLowerCase()));
@@ -335,33 +415,61 @@ export async function exportAckReceipt() {
     currentY += 15;
 
     const tableData = items.map((item, index) => {
-        let accessories = "-";
-        const descLower = (item.description || "").toLowerCase();
-        if (descLower.includes('tablet') || descLower.includes('samsung') || descLower.includes('ipad') || descLower.includes('tab')) { accessories = "With Powerbank and/or Accessories"; }
-        else if (descLower.includes('laptop')) { accessories = "With Charger and Bag"; }
-        return [index + 1, "", (item.description && item.description.toLowerCase().includes('samsung')) ? "Samsung" : (item.description || ""), item.serial, item.asset_no || "", accessories, "", ""];
+        const brand = (item.description && item.description.toLowerCase().includes('samsung')) ? "Samsung" : (item.description || "").split(' ')[0];
+        return [index + 1, "", brand, item.serial, item.asset_no || "", "", "", ""];
     });
+
+    const BOX_SIZE = 3.5; // mm — size of each checkbox square
+    const ACK_LABELS = ["Powerbank", "Type C Cable", "Adapter", "Compatible Case"];
+    const ACK_LINE_H = BOX_SIZE + 2.5;
+    const ACK_TOTAL_H = ACK_LINE_H * (ACK_LABELS.length - 1) + BOX_SIZE;
+    const drawnAckRows = new Set(); // prevent double-draw on page breaks
 
     doc.autoTable({
         startY: currentY,
-        head: [["No.", "Name of Hired\nBased Personnel", "Tablet Brand", "Serial Number", "Asset Tag\nNumber", "With Powerbank\nand/or Accessories", "Signature", "Date of\nAcknowledgement"]],
+        head: [["No.", "Name of Hired\nBased Personnel", "Tablet\nBrand", "Serial Number", "Asset Tag\nNo.", "With Powerbank\nand/or Accessories", "Signature", "Date of\nAcknowledgement"]],
         body: tableData, theme: 'grid',
+        margin: { bottom: 38 },
+        rowPageBreak: 'avoid',
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3, halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 8 },
-        styles: { textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3, fontSize: 8, valign: 'middle' },
-        columnStyles: { 0: { width: 10, halign: 'center' }, 1: { width: 35 }, 2: { width: 20 }, 3: { width: 25 }, 4: { width: 20, halign: 'center' }, 5: { width: 30, fontSize: 7 }, 6: { width: 25 }, 7: { width: 20 } },
-        didDrawPage: function (data) { addFooter(doc); }
+        styles: { textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3, fontSize: 8, valign: 'middle', minCellHeight: ACK_TOTAL_H + 8 },
+        columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 55 }, 2: { cellWidth: 18 }, 3: { cellWidth: 28 }, 4: { cellWidth: 16, halign: 'center' }, 5: { cellWidth: 28, fontSize: 7 }, 6: { cellWidth: 20 }, 7: { cellWidth: 17 } },
+        didDrawPage: function (data) { addFooter(doc); },
+        didDrawCell: function (data) {
+            if (data.section !== 'body' || data.column.index !== 5) return;
+            if (drawnAckRows.has(data.row.index)) return; // skip duplicate on page break
+            drawnAckRows.add(data.row.index);
+
+            const x = data.cell.x + 2;
+            const rawStartY = data.cell.y + (data.cell.height - ACK_TOTAL_H) / 2;
+            const safeStartY = Math.max(rawStartY, data.cell.y + 2);
+
+            doc.setDrawColor(0); doc.setLineWidth(0.3);
+            doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+            ACK_LABELS.forEach((label, i) => {
+                const y = safeStartY + i * ACK_LINE_H;
+                doc.rect(x, y, BOX_SIZE, BOX_SIZE);
+                doc.text(label, x + BOX_SIZE + 1, y + BOX_SIZE - 0.5);
+            });
+        }
     });
 
     const totalPages = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) { doc.setPage(i); doc.setFontSize(8); doc.text(`Page ${i} of ${totalPages}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 4); }
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        // Place page number just above the footer separator line (footerY - 5 is the line, so sit at footerY - 9)
+        const pageHeight = doc.internal.pageSize.height;
+        doc.text(`Page ${i} of ${totalPages}`, doc.internal.pageSize.width - 15, pageHeight - 26, { align: 'right' });
+    }
     doc.save(`AcknowledgementReceipt_${projectName}_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 // --- TRANSMITTAL FORM ---
 export async function exportTransmittal() {
-    if (state.currentUser.email !== ADMIN_ROLES.STATION_1 && state.currentUser.email !== ADMIN_ROLES.STATION_4) return alert("Unauthorized.");
     let rawItems = state.tempExportItems ? state.tempExportItems : getSelectedItems();
     if (rawItems.length === 0) return;
+    if (!requireExportPermission(rawItems)) return;
 
     const items = expandPhilSysItems(rawItems);
     const borrowerName = items[0].borrower || "Unknown";
@@ -395,47 +503,73 @@ export async function exportTransmittal() {
     doc.setFontSize(14); doc.text("TRANSMITTAL / RECEIPT FORM", 105, currentY, { align: "center" }); currentY += 15;
     
     // --- SUMMARY COUNT TABLE ---
+    // Accessories list mirrors the checkboxes in the detail table
+    const ACCESSORIES = ["Powerbank", "Type C Cable", "Adapter", "Compatible Case"];
     const summaryCounts = {};
     items.forEach(item => {
         const d = (item.description || "Unknown").trim();
         let b = d;
-        if(d.toLowerCase().includes('tablet')) b = "Samsung Tablet";
-        else if(d.toLowerCase().includes('laptop')) b = "Laptop";
+        if (d.toLowerCase().includes('tablet')) b = "Tablet";
+        else if (d.toLowerCase().includes('laptop')) b = "Laptop";
         summaryCounts[b] = (summaryCounts[b] || 0) + 1;
     });
     const summaryBody = [];
     Object.entries(summaryCounts).forEach(([n, c]) => {
-        summaryBody.push([n, String(c)]);
-        if (n.includes("Tablet")) { summaryBody.push(["Adapter", String(c)], ["Type C Cable", String(c)], ["Box", String(c)]); }
-        else if (n.includes("Laptop")) { summaryBody.push(["Adapter/Charger", String(c)], ["Laptop Bag", String(c)], ["Mouse", String(c)]); }
+        summaryBody.push([n, String(c)]);                          // auto count for the item
+        ACCESSORIES.forEach(acc => summaryBody.push([acc, ""]));   // blank — filled by hand
     });
 
+    // Column widths must match the detail table exactly: total = 170mm
+    // Detail: 10 + 45 + 30 + 25 + 15 + 45 = 170mm
+    // Summary: item col = 155mm, count col = 15mm → total = 170mm
     doc.autoTable({
         startY: currentY, head: [['TOTAL', '']], body: summaryBody, theme: 'plain',
-        margin: { bottom: 40 }, 
+        margin: { left: 14, right: 14, bottom: 40 },
         styles: { fontSize: 9, textColor: [0,0,0], lineColor: [0,0,0], lineWidth: 0.3, cellPadding: 1 },
         headStyles: { fillColor: [255,255,255], lineWidth: 0.3, fontStyle: 'bold' },
-        columnStyles: { 0: { cellWidth: 160 }, 1: { cellWidth: 20, halign: 'center' } }
+        columnStyles: { 0: { cellWidth: 155 }, 1: { cellWidth: 15, halign: 'center' } },
+        didDrawPage: function() { stampFooter(); }
     });
     currentY = doc.lastAutoTable.finalY + 10;
 
     // --- DETAILED ITEM TABLE ---
     const tableBody = items.map((it, idx) => {
-        let acc = "-";
-        const d = (it.description || "").toLowerCase();
-        if (d.includes('tablet')) acc = "With type c cable, box\nand adapter";
-        if (d.includes('laptop')) acc = "With charger, bag\nand mouse";
-        return [idx + 1, `${it.description}\n\n${it.serial}`, it.asset_no || 'N/A', "1", acc];
+        return [idx + 1, it.description || '', it.serial || '', it.asset_no || 'N/A', "1", ""];
     });
+
+    const TX_BOX = 3.5; // mm — checkbox square size
+    const TX_LABELS = ["Powerbank", "Type C Cable", "Adapter", "Compatible Case"];
+    const TX_LINE_H = TX_BOX + 3.5;
+    const TX_TOTAL_H = TX_LINE_H * (TX_LABELS.length - 1) + TX_BOX;
+    const drawnTxRows = new Set(); // prevent double-draw on page breaks
 
     doc.autoTable({
         startY: currentY,
-        head: [['No.', 'ITEM NAME\n\nSERIAL No.', 'ASSET TAG No.', 'UNIT', 'ACCESSORIES']],
+        head: [['No.', 'ITEM NAME', 'SERIAL No.', 'ASSET TAG No.', 'UNIT', 'ACCESSORIES']],
         body: tableBody, theme: 'plain', 
-        margin: { bottom: 40 }, 
-        styles: { fontSize: 9, lineColor: [0,0,0], lineWidth: 0.3, valign: 'middle', cellPadding: 3 },
-        headStyles: { fillColor: [255,255,255], lineWidth: 0.3, fontStyle: 'bold', halign: 'center' },
-        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 70 }, 2: { cellWidth: 30, halign: 'center' }, 3: { cellWidth: 15, halign: 'center' } }
+        margin: { left: 14, right: 14, bottom: 45 }, 
+        rowPageBreak: 'avoid',
+        styles: { fontSize: 9, lineColor: [0,0,0], lineWidth: 0.3, valign: 'middle', cellPadding: 3, minCellHeight: TX_TOTAL_H + 8 },
+        headStyles: { fillColor: [255,255,255], lineWidth: 0.3, fontStyle: 'bold', halign: 'center', minCellHeight: 10 },
+        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 45 }, 2: { cellWidth: 30 }, 3: { cellWidth: 25, halign: 'center' }, 4: { cellWidth: 15, halign: 'center' }, 5: { cellWidth: 45 } },
+        didDrawPage: function() { stampFooter(); },
+        didDrawCell: function (data) {
+            if (data.section !== 'body' || data.column.index !== 5) return;
+            if (drawnTxRows.has(data.row.index)) return; // skip duplicate on page break
+            drawnTxRows.add(data.row.index);
+
+            const x = data.cell.x + 3;
+            const rawStartY = data.cell.y + (data.cell.height - TX_TOTAL_H) / 2;
+            const safeStartY = Math.max(rawStartY, data.cell.y + 2);
+
+            doc.setDrawColor(0); doc.setLineWidth(0.3);
+            doc.setFontSize(7); doc.setFont("helvetica", "normal");
+            TX_LABELS.forEach((label, i) => {
+                const y = safeStartY + i * TX_LINE_H;
+                doc.rect(x, y, TX_BOX, TX_BOX);
+                doc.text(label, x + TX_BOX + 1.5, y + TX_BOX - 0.5);
+            });
+        }
     });
 
     let finalY = doc.lastAutoTable.finalY + 20;
@@ -444,8 +578,9 @@ export async function exportTransmittal() {
     const leftX = 20; const rightX = 120; const lineLen = 70;
     doc.setFontSize(10); doc.text("Transmitted by:", leftX, finalY); doc.text("Received by:", rightX, finalY); finalY += 25;
     doc.setFont("helvetica", "bold");
+    const receivedByName = canManageFiles(state.currentUser) ? borrowerName.toUpperCase() : "";
     doc.text(state.currentUserName.toUpperCase(), leftX + (lineLen/2), finalY - 2, { align: 'center' }); doc.line(leftX, finalY, leftX + lineLen, finalY);
-    doc.text(borrowerName.toUpperCase(), rightX + (lineLen/2), finalY - 2, { align: 'center' }); doc.line(rightX, finalY, rightX + lineLen, finalY);
+    doc.text(receivedByName, rightX + (lineLen/2), finalY - 2, { align: 'center' }); doc.line(rightX, finalY, rightX + lineLen, finalY);
     doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text("SIGNATURE OVER PRINTED NAME", leftX + (lineLen/2), finalY + 4, { align: 'center' });
     doc.text("SIGNATURE OVER PRINTED NAME", rightX + (lineLen/2), finalY + 4, { align: 'center' });

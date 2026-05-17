@@ -1,4 +1,4 @@
-const { supabase } = require('./config.js?raw'); // Won't work, using inline instead
+// const { supabase } = require('./config.js?raw'); // Won't work, using inline instead
 
 // INLINE SUPABASE CONFIG (public anon key safe for insert)
 const SUPABASE_URL = 'https://bnkqrvsfioadhgvhylur.supabase.co';
@@ -8,16 +8,16 @@ async function createAdmins() {
   // Admin emails from config.js
   const admins = [
     { email: 'admin@psa.gov.ph', name: 'Rigor S. Cubinor', role: 'admin', department: 'PSA' },
-    { email: 'admin1@psa.gov.ph', name: 'Jenor B. Blas', role: 'admin', department: 'Property' },
-    { email: 'admin2@psa.gov.ph', name: 'Mary Anne G. Basilio', role: 'admin', department: 'Inspection' },
-    { email: 'admin3@psa.gov.ph', name: 'Maricel M. Caragan', role: 'admin', department: 'OIC' },
+    // { email: 'admin1@psa.gov.ph', name: 'Jenor B. Blas', role: 'admin', department: 'Property' }, // Replaced by super admin creator
+    // { email: 'admin2@psa.gov.ph', name: 'Mary Anne G. Basilio', role: 'admin', department: 'Inspection' }, // Replaced by super admin creator
+    // { email: 'admin3@psa.gov.ph', name: 'Maricel M. Caragan', role: 'admin', department: 'OIC' }, // Replaced by super admin creator
     { email: 'admin4@psa.gov.ph', name: 'Joemar P. Jerez', role: 'viewer', department: 'Viewer' },
     { email: 'admin5@psa.gov.ph', name: 'Judie Rhisa G. Baluran', role: 'viewer', department: 'Viewer' }
   ];
 
   console.log('🔧 Creating PSA Admin users in database...');
 
-  const { createClient } = supabase;
+  const { createClient } = require('@supabase/supabase-js');
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   for (const admin of admins) {

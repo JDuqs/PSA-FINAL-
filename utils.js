@@ -46,54 +46,51 @@ export function showConfirm(title, message) {
     });
 }
 
-// --- UPDATED ID GENERATION: STRICT HIGHEST NUMBER + 1 ---
+// --- GATE PASS ID GENERATION: CURRENT YY-MM + GLOBAL HIGHEST NUMBER + 1 ---
 export async function getNextGatePassID() {
     try {
-        // 1. Generate Date Parts for Prefix: YY-MM-
+        // 1. Generate current date prefix: YY-MM-
         const now = new Date();
-        const year = String(now.getFullYear()).slice(-2); // Last 2 digits (e.g., "26")
-        const month = String(now.getMonth() + 1).padStart(2, '0'); // 2-digit month (e.g., "02")
-        const prefix = `${year}-${month}-`; // Result: "26-02-"
+        const year = String(now.getFullYear()).slice(-2);
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const prefix = `${year}-${month}-`;
 
-        // 2. Query DB for existing IDs with this prefix
-        const { data: localData, error } = await supabase
+        // 2. Read existing unique IDs from the table and find the highest numeric suffix overall.
+        // This prevents the counter from resetting when the month changes.
+        const { data: existingIds, error } = await supabase
             .from('gate_passes')
             .select('unique_id')
-            .ilike('unique_id', `${prefix}%`); // Looks for '26-02-%'
+            .not('unique_id', 'is', null);
 
         if (error) throw error;
 
-        // 3. Find the ABSOLUTE HIGHEST number currently in the database for this month
+        // 3. Find the highest sequence number from IDs shaped like YY-MM-NNN...
         let maxNum = 0;
-        if (localData && localData.length > 0) {
-            localData.forEach(row => {
-                // Expected format: YY-MM-NN (e.g., "26-02-105")
-                const parts = row.unique_id.split('-');
-                if (parts.length >= 3) {
-                    const num = parseInt(parts[2], 10); 
+        if (existingIds && existingIds.length > 0) {
+            existingIds.forEach(row => {
+                const match = String(row.unique_id || '').trim().match(/^(\d{2})-(\d{2})-(\d+)$/);
+                if (match) {
+                    const num = parseInt(match[3], 10);
                     if (!isNaN(num) && num > maxNum) {
-                        maxNum = num; // Keep updating to find the highest number
+                        maxNum = num;
                     }
                 }
             });
         }
 
-        // 4. Always add 1 to the highest number found
+        // 4. Continue from the highest number already used in the whole table.
         const nextNum = maxNum + 1;
-
-        // 5. Format and Return
-        // Pad with leading zero ONLY if it is less than 10 (e.g., 2 becomes "02", but 106 stays "106")
         const nextNumStr = nextNum < 10 ? `0${nextNum}` : String(nextNum);
 
-        return `${prefix}${nextNumStr}`; // Result: "26-02-106"
+        return `${prefix}${nextNumStr}`;
         
     } catch (e) {
         console.error("ID Generation Error:", e);
-        // Fallback: Generate a random ID with the correct format to prevent blockage
+        // Fallback keeps the current date prefix but uses a timestamp-based suffix to avoid obvious collisions.
         const now = new Date();
         const y = String(now.getFullYear()).slice(-2);
         const m = String(now.getMonth() + 1).padStart(2, '0');
-        const r = String(Math.floor(Math.random() * 1000)).padStart(2, '0');
+        const r = String(Date.now()).slice(-6);
         return `${y}-${m}-${r}`;
     }
 }

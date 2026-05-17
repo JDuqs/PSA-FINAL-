@@ -4,92 +4,254 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PSA System Login</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- REQUIRED: SUPABASE SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
-        body { 
-            background-color: #f4f7f9; 
-            min-height: 100vh; 
-            display: flex; 
-            flex-direction: column;
-            font-family: 'Segoe UI', sans-serif; 
-        }
-        
-        /* HEADER STYLES */
-        .psa-official-header {
-            background-color: #003399; /* PSA Blue */
-            color: white;
-            border-bottom: 5px solid #ffcc00; /* PSA Yellow */
-            padding: 15px 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        :root {
+            --psa-blue: #003399;
+            --psa-blue-dark: #002266;
+            --psa-blue-soft: #eaf1ff;
+            --psa-yellow: #ffcc00;
+            --psa-ink: #15304f;
+            --psa-sky: #f4f7f9;
         }
 
-        /* MAIN CONTENT CENTERING */
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: 'Segoe UI', sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(0, 51, 153, 0.08), transparent 32%),
+                linear-gradient(180deg, #f8fbff 0%, var(--psa-sky) 100%);
+        }
+
+        .psa-official-header {
+            background-color: var(--psa-blue);
+            color: white;
+            border-bottom: 5px solid var(--psa-yellow);
+            padding: 15px 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        }
+
         main {
             flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 40px 20px;
+            padding: 48px 20px;
         }
 
-        /* CARD STYLES */
-        .login-card { 
+        .login-shell {
             width: 100%;
-            max-width: 400px; 
-            padding: 30px; 
-            border-radius: 12px; 
-            background: white; 
-            box-shadow: 0 10px 30px rgba(0, 51, 153, 0.1); /* Subtle blue shadow */
-            border-top: 4px solid #003399;
-        }
-        
-        .card-header-internal { 
-            margin-bottom: 25px; 
-            padding-bottom: 15px; 
-            border-bottom: 1px solid #eee;
+            max-width: 1040px;
+            display: grid;
+            grid-template-columns: 1.08fr 0.92fr;
+            background: white;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(0, 51, 153, 0.14);
+            border: 1px solid rgba(0, 51, 153, 0.08);
         }
 
-        .btn-primary { 
-            background-color: #003399; 
-            border: none; 
-            font-weight: bold; 
-            padding: 12px; 
-            transition: all 0.3s ease;
+        .login-hero {
+            position: relative;
+            padding: 42px 36px;
+            color: white;
+            background:
+                linear-gradient(150deg, rgba(0, 51, 153, 0.96), rgba(0, 34, 102, 0.94)),
+                var(--psa-blue);
         }
-        .btn-primary:hover { 
-            background-color: #002266; 
-            transform: translateY(-1px);
+
+        .login-hero::after {
+            content: "";
+            position: absolute;
+            inset: auto -48px -64px auto;
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            background: rgba(255, 204, 0, 0.18);
         }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .hero-title {
+            font-size: 2.2rem;
+            line-height: 1.1;
+            font-weight: 800;
+            margin: 22px 0 14px;
+        }
+
+        .hero-text {
+            max-width: 460px;
+            color: rgba(255, 255, 255, 0.86);
+            margin-bottom: 28px;
+        }
+
+        .hero-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .hero-list-item {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .hero-list-item i {
+            color: var(--psa-yellow);
+            margin-top: 2px;
+        }
+
+        .login-panel {
+            padding: 40px 34px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .panel-kicker {
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: var(--psa-blue);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .panel-title {
+            color: var(--psa-ink);
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+
+        .panel-subtitle {
+            color: #5f6f82;
+            margin-bottom: 26px;
+        }
+
+        .form-label {
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: #516173;
+            letter-spacing: 0.03em;
+        }
+
+        .input-group-text {
+            background: var(--psa-blue-soft);
+            color: var(--psa-blue);
+            border-color: #d5e0ff;
+        }
+
+        .form-control {
+            border-color: #d5def0;
+            padding-top: 0.8rem;
+            padding-bottom: 0.8rem;
+        }
+
         .form-control:focus {
-            border-color: #003399;
-            box-shadow: 0 0 0 0.25rem rgba(0, 51, 153, 0.15);
+            border-color: var(--psa-blue);
+            box-shadow: 0 0 0 0.25rem rgba(0, 51, 153, 0.14);
         }
 
-        /* FOOTER STYLES */
+        .btn-psa {
+            background: linear-gradient(135deg, var(--psa-blue), #1749b3);
+            color: white;
+            border: none;
+            font-weight: 800;
+            padding: 12px;
+            box-shadow: 0 12px 24px rgba(0, 51, 153, 0.18);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn-psa:hover {
+            background: linear-gradient(135deg, var(--psa-blue-dark), var(--psa-blue));
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 16px 28px rgba(0, 51, 153, 0.22);
+        }
+
+        .btn-outline-psa,
+        .btn-outline-guard {
+            font-weight: 700;
+            border-width: 1px;
+            padding: 10px 14px;
+        }
+
+        .btn-outline-psa {
+            color: var(--psa-blue);
+            border-color: rgba(0, 51, 153, 0.18);
+            background: #f8fbff;
+        }
+
+        .btn-outline-psa:hover {
+            color: var(--psa-blue-dark);
+            border-color: rgba(0, 51, 153, 0.28);
+            background: var(--psa-blue-soft);
+        }
+
+        .btn-outline-guard {
+            color: #9a6b00;
+            border-color: rgba(255, 204, 0, 0.45);
+            background: #fffaf0;
+        }
+
+        .btn-outline-guard:hover {
+            color: #6b4a00;
+            border-color: rgba(255, 204, 0, 0.75);
+            background: #fff2c7;
+        }
+
         .psa-footer {
             background-color: white;
-            border-top: 1px solid #e0e0e0;
+            border-top: 1px solid #e0e7f2;
             padding: 20px 0;
             font-size: 0.85rem;
             color: #444;
             line-height: 1.5;
         }
+
+        @media (max-width: 900px) {
+            .login-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .login-hero,
+            .login-panel {
+                padding: 30px 24px;
+            }
+        }
+        /* Hide browser built-in password reveal button */
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear,
+        input[type="password"]::-webkit-credentials-auto-fill-button,
+        input[type="password"]::-webkit-strong-password-auto-fill-button {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
-
-    <!-- OFFICIAL HEADER -->
     <header class="psa-official-header w-100">
         <div class="container d-flex align-items-center">
-            <!-- UPDATED: PSA Logo set to PSA.png -->
             <img src="PSA.png" alt="PSA Logo" style="height: 65px; margin-right: 15px; filter: drop-shadow(0 0 2px rgba(255,255,255,0.2));">
-            
             <div class="text-start">
                 <small class="d-block text-uppercase fw-bold" style="letter-spacing: 1px; font-size: 0.75rem; opacity: 0.9;">Republic of the Philippines</small>
                 <h4 class="m-0 fw-bold">Philippine Statistics Authority</h4>
@@ -97,47 +259,73 @@
         </div>
     </header>
 
-    <!-- MAIN CONTENT (Centered Login Card) -->
     <main>
-        <div class="login-card text-center">
-            <div class="card-header-internal">
-                <h4 style="color: #003399; font-weight: bold; margin: 0;">PSA Gate Pass</h4>
-                <small class="text-muted d-block mt-1">Las Piñas • Muntinlupa • Parañaque • Pasay</small>
-            </div>
-            
-            <form id="loginForm">
-                <div class="text-start mb-3">
-                    <label class="form-label fw-bold small text-secondary">EMAIL ADDRESS</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-end-0"><i class="fa fa-envelope text-muted"></i></span>
-                        <input type="email" id="email" class="form-control border-start-0 ps-0"  required autocomplete="username">
+        <div class="login-shell">
+            <section class="login-hero">
+                <div class="hero-badge">
+                    <i class="fas fa-id-card"></i>
+                    Official Access Portal
+                </div>
+                <h1 class="hero-title">PSA Gate Pass System</h1>
+                <p class="hero-text">Securely manage equipment movement, approvals, and accountability across the PSA gate pass workflow.</p>
+                <div class="hero-list">
+                    <div class="hero-list-item">
+                        <i class="fas fa-route"></i>
+                        <div>
+                            <div class="fw-bold">Structured release workflow</div>
+                            <small class="text-white-50">Track requests from issuance to release and return.</small>
+                        </div>
+                    </div>
+                    <div class="hero-list-item">
+                        <i class="fas fa-shield-check"></i>
+                        <div>
+                            <div class="fw-bold">Clear accountability</div>
+                            <small class="text-white-50">Keep records organized for staff, approvers, and guard personnel.</small>
+                        </div>
                     </div>
                 </div>
-                <div class="text-start mb-4">
-                    <label class="form-label fw-bold small text-secondary">PASSWORD</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-end-0"><i class="fa fa-lock text-muted"></i></span>
-                        <input type="password" id="password" class="form-control border-start-0 ps-0"  required autocomplete="current-password">
-                    </div>
-                </div>
-                <button type="submit" id="loginBtn" class="btn btn-primary w-100 mb-3 shadow-sm">LOGIN TO SYSTEM</button>
-            </form>
+            </section>
 
-            <div class="text-center border-top pt-3">
-                <div class="d-grid gap-2 mt-3">
-                    <a href="guardsupplies.html" class="btn btn-outline-success btn-sm fw-bold">
-                        <i class="fas fa-shield-alt me-1"></i> Security Guard Login (Supplies Tracking)
-                    </a>
-                    <a href="signup.html" class="btn btn-outline-primary btn-sm fw-bold">
-                        Request Account Access / Sign Up
-                    </a>
+            <section class="login-panel">
+                <div class="panel-kicker">Authorized Users</div>
+                <h3 class="panel-title">Sign In to Continue</h3>
+                <p class="panel-subtitle">Use your PSA account credentials to access the gate pass system dashboard.</p>
+
+                <form id="loginForm">
+                    <div class="text-start mb-3">
+                        <label class="form-label">EMAIL ADDRESS</label>
+                        <div class="input-group">
+                            <span class="input-group-text border-end-0"><i class="fa fa-envelope"></i></span>
+                            <input type="email" id="email" class="form-control border-start-0 ps-0" required autocomplete="username">
+                        </div>
+                    </div>
+                    <div class="text-start mb-4">
+                        <label class="form-label">PASSWORD</label>
+                        <div class="input-group">
+                            <input type="password" id="password" class="form-control border-end-0 ps-3" required autocomplete="current-password">
+                            <button class="btn btn-outline-secondary border-start-0" type="button" id="togglePasswordBtn" tabindex="-1" title="Show/hide password">
+                                <i class="fa fa-eye" id="togglePasswordIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" id="loginBtn" class="btn btn-psa w-100 mb-3">LOGIN TO SYSTEM</button>
+                </form>
+
+                <div class="text-center border-top pt-3">
+                    <div class="d-grid gap-2 mt-3">
+                        <a href="guardsupplies.html" class="btn btn-outline-guard">
+                            <i class="fas fa-shield-alt me-1"></i> Security Guard Login
+                        </a>
+                        <a href="signup.html" class="btn btn-outline-psa">
+                            Request Account Access / Sign Up
+                        </a>
+                    </div>
                 </div>
-            </div>
-            <p id="errorMsg" class="text-danger mt-3 small fw-bold"></p>
+                <p id="errorMsg" class="text-danger mt-3 small fw-bold"></p>
+            </section>
         </div>
     </main>
 
-    <!-- OFFICIAL FOOTER -->
     <footer class="psa-footer w-100 text-center">
         <div class="container">
             <p class="mb-0">3rd Floor STWLPC Building, 335-338 Sen. Gil Puyat Avenue (Buendia)</p>
@@ -151,5 +339,20 @@
         document.getElementById('loginForm').addEventListener('submit', window.handleLogin);
     </script>
     <script type="module" src="app.js"></script>
+    <script>
+        document.getElementById('togglePasswordBtn').addEventListener('click', function() {
+            const input = document.getElementById('password');
+            const icon = document.getElementById('togglePasswordIcon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        });
+    </script>
 </body>
 </html>

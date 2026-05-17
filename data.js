@@ -1,5 +1,5 @@
 // Data Loading & Refresh Logic
-import { supabase, isAnyAdmin, ADMIN_ROLES } from './config.js';
+import { supabase, isAnyAdmin, isStation1Admin, isStation2Admin, isStation3Admin, isStation4Admin, canHandleStation1, canHandleStation2 } from './config.js';
 import { state } from './state.js';
 import { updateBorrowedStatus } from './inventory.js';
 import { renderTable, renderArchiveTable, renderStationTable, renderReleasingTable, populateReturnSelector, updateUnifiedSelectionCount, updateNavBadges } from './render.js';
@@ -31,7 +31,7 @@ export async function loadOutPassesForGuard() {
 
 export function loadAllRecords() {
     const user = state.currentUser;
-    const isAdmin = isAnyAdmin(user.email);
+    const isAdmin = isAnyAdmin(user);
     
     const fetchRecords = async () => {
         try {
@@ -127,15 +127,16 @@ export function loadAllRecords() {
             renderTable('history');
             renderArchiveTable(); // NEW: Render Scanned Archives tab
             
-            const canApproveStn1 = (user.email === ADMIN_ROLES.STATION_1);
-            const canApproveStn2 = (user.email === ADMIN_ROLES.STATION_2);
-            const canApproveStn3 = (user.email === ADMIN_ROLES.STATION_3);
-            const canReleaseStn4 = (user.email === ADMIN_ROLES.STATION_4);
+            // Dynamic station perms
+            const isStation1 = isStation1Admin(user);
+            const isStation2 = isStation2Admin(user);
+            const isStation3 = isStation3Admin(user);
+            const isStation4 = isStation4Admin(user);
 
-            renderStationTable(state.station1Data, 'station1TableBody', 'badgeStation1', 'PENDING_PROPERTY', canApproveStn1);
-            renderStationTable(state.station2Data, 'station2TableBody', 'badgeStation2', 'PENDING_INSPECTION', canApproveStn2);
-            renderStationTable(state.station3Data, 'station3TableBody', 'badgeStation3', 'PENDING_OIC', canApproveStn3);
-            renderReleasingTable(canReleaseStn4);
+            renderStationTable(state.station1Data, 'station1TableBody', 'badgeStation1', 'PENDING_PROPERTY', canHandleStation1(user));
+            renderStationTable(state.station2Data, 'station2TableBody', 'badgeStation2', 'PENDING_INSPECTION', canHandleStation2(user));
+            renderStationTable(state.station3Data, 'station3TableBody', 'badgeStation3', 'PENDING_OIC', isStation3);
+            renderReleasingTable(isStation4);
 
             const restoreSelection = (tbodyId, ids) => {
                 if(ids.length) {

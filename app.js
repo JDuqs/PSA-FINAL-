@@ -17,7 +17,9 @@ window.approveUser = auth.approveUser;
 window.cancelRequest = auth.cancelRequest;
 window.removeItem = inventory.removeItem;
 window.selectInventoryItem = inventory.selectInventoryItem;
-window.handleBulkAdd = inventory.handleBulkAdd; 
+window.handleBulkAdd = inventory.handleBulkAdd;
+window.loadMasterInventory = inventory.loadMasterInventory;
+window.loadPhilSysInventoryTable = inventory.loadPhilSysInventoryTable;
 
 // FIX: Point these to the correct workflow functions to fix Master Inventory loading/saving
 window.processImportFile = workflow.processImportFile; 
@@ -49,11 +51,31 @@ document.getElementById('btnExportTransmittal')?.addEventListener('click', expor
 document.getElementById('btnExportAckReceipt')?.addEventListener('click', exports.exportAckReceipt);
 
 document.getElementById('openUnifiedExportModalBtn')?.addEventListener('click', exports.openUnifiedExportModal);
+document.getElementById('btnSelectAllUnified')?.addEventListener('click', () => {
+    const activeViewId = document.querySelector('.app-view.active-view')?.id;
+    let tableId = 'activeTableBody';
+    if (activeViewId === 'view-approvals') {
+        tableId = 'releasingTableBody';
+    } else {
+        const context = document.querySelector('#recordsTabs .nav-link.active')?.getAttribute('data-context') || 'active';
+        tableId = context === 'active' ? 'activeTableBody' : (context === 'history' ? 'historyTableBody' : 'archiveTableBody');
+    }
+    document.querySelectorAll(`#${tableId} .export-check`).forEach(box => { box.checked = true; });
+    render.updateUnifiedSelectionCount();
+});
+document.getElementById('btnDeselectAllUnified')?.addEventListener('click', () => {
+    document.querySelectorAll('.export-check:checked, .export-item-check:checked').forEach(box => { box.checked = false; });
+    render.updateUnifiedSelectionCount();
+});
+document.addEventListener('change', (e) => {
+    if (e.target?.classList?.contains('export-check') || e.target?.classList?.contains('export-item-check')) render.updateUnifiedSelectionCount();
+});
 
 // Inventory Import Listeners
 const processImportBtn = document.getElementById('processImportBtn');
 if (processImportBtn) { processImportBtn.addEventListener('click', workflow.processImportFile); }
 document.getElementById('saveBulkBtn')?.addEventListener('click', workflow.saveBulkImport);
+document.getElementById('exportInventoryBtn')?.addEventListener('click', inventory.exportMasterInventoryExcel);
 
 // Confirm Release & Historical Submit Listeners
 document.getElementById('btnConfirmRelease')?.addEventListener('click', workflow.handleReleaseSubmit);
@@ -84,15 +106,31 @@ export async function initDashboard(user) {
         userDisplay.innerHTML = `<i class="fa fa-circle-user me-2 fs-5"></i><span>${state.currentUserName}</span>`;
     }
 
-    const isViewerUser = user.email === config.ADMIN_ROLES.VIEWER || user.email === config.ADMIN_ROLES.VIEWER2;
+    const userData = await config.supabase.from('users').select('*').eq('email', user.email).single().then(r => r.data);
+    const currentUser = {
+        ...user,
+        ...(userData || {}),
+        email: user.email,
+        department: userData?.department || user.user_metadata?.department || '',
+        role: userData?.role || user.role || ''
+    };
 
-    if (config.isAnyAdmin(user.email)) {
-        if (adminPanelBtn) adminPanelBtn.style.display = (user.email === config.ADMIN_ROLES.STATION_4) ? 'flex' : 'none';
-        if (returnSection) returnSection.style.display = (user.email === config.ADMIN_ROLES.STATION_4) ? 'block' : 'none';
+    state.currentUser = currentUser;
+
+    const isViewerUser = config.isViewerAdmin(currentUser);
+    const isStation1 = config.isStation1Admin(currentUser);
+    const isStation2 = config.isStation2Admin(currentUser);
+    const isStation3 = config.isStation3Admin(currentUser);
+    const isStation4 = config.isStation4Admin(currentUser);
+    const userIsAdmin = config.isAnyAdmin(currentUser);
+
+    if (userIsAdmin) {
+        const canManageFiles = config.canManageFiles(currentUser);
+
+    if (adminPanelBtn) adminPanelBtn.style.display = (isStation4 || isStation1) ? 'flex' : 'none';
+        if (returnSection) returnSection.style.display = isStation4 ? 'block' : 'none';
         
-        // Admins 1 & 4 can handle Exports and Historical Imports
-        const canManageFiles = (user.email === config.ADMIN_ROLES.STATION_1 || user.email === config.ADMIN_ROLES.STATION_4);
-        if (exportToolbar) exportToolbar.style.display = canManageFiles ? 'flex' : 'none';
+        if (exportToolbar) exportToolbar.style.setProperty('display', canManageFiles ? 'flex' : 'none', 'important');
         if (histModalBtn) histModalBtn.style.display = canManageFiles ? 'block' : 'none';
         
         // UNHIDE BULK IMPORT TAB FOR ADMINS
@@ -101,25 +139,30 @@ export async function initDashboard(user) {
         
         ['stn1','stn2','stn3','stn4'].forEach(id => { const el = document.getElementById('nav-'+id); if(el) el.style.display = 'none'; });
         
-        if (user.email === config.ADMIN_ROLES.STATION_1) {
+        if (isStation1) {
             const el = document.getElementById('nav-stn1'); if(el) el.style.display = 'block';
+            const stn2El = document.getElementById('nav-stn2'); if(stn2El) stn2El.style.display = 'block';
             document.querySelector('#nav-stn1 button')?.classList.add('active');
             document.getElementById('stn1Pane')?.classList.add('show', 'active');
+            // Station 1 gets Master Inventory access
+            const invNav = document.getElementById('navMasterInventory');
+            if (invNav) invNav.style.display = 'flex';
         } 
-        else if (user.email === config.ADMIN_ROLES.STATION_2) {
+        else if (isStation2) {
+            const stn1El = document.getElementById('nav-stn1'); if(stn1El) stn1El.style.display = 'block';
             const el = document.getElementById('nav-stn2'); if(el) el.style.display = 'block';
             document.querySelector('#nav-stn2 button')?.classList.add('active');
             document.getElementById('stn2Pane')?.classList.add('show', 'active');
         }
-        else if (user.email === config.ADMIN_ROLES.STATION_3) {
+        else if (isStation3) {
             const el = document.getElementById('nav-stn3'); if(el) el.style.display = 'block';
             document.querySelector('#nav-stn3 button')?.classList.add('active');
             document.getElementById('stn3Pane')?.classList.add('show', 'active');
         }
-        else if (user.email === config.ADMIN_ROLES.STATION_4 || isViewerUser) {
+        else if (isStation4 || isViewerUser) {
             ['stn1','stn2','stn3','stn4'].forEach(id => { const el = document.getElementById('nav-'+id); if(el) el.style.display = 'block'; });
             
-            if (user.email === config.ADMIN_ROLES.STATION_4) {
+            if (isStation4) {
                 document.querySelector('#nav-stn4 button')?.classList.add('active');
                 document.getElementById('stn4Pane')?.classList.add('show', 'active');
             } else {
@@ -140,7 +183,7 @@ export async function initDashboard(user) {
     } else {
         if (window.location.href.includes('admin')) { window.location.href = 'dashboard.html'; return; }
         if (returnSection) returnSection.style.display = 'none';
-        if (exportToolbar) exportToolbar.style.display = 'none';
+        if (exportToolbar) exportToolbar.style.setProperty('display', 'none', 'important');
         if (histModalBtn) histModalBtn.style.display = 'none';
 
         document.querySelector('#nav-stn1 button')?.classList.add('active');
@@ -150,7 +193,6 @@ export async function initDashboard(user) {
     }
     
     if(document.getElementById('activeTableBody')) {
-        state.currentUser = user;
         data.loadAllRecords();
         inventory.updateBorrowedStatus();
         utils.updateClock();
@@ -163,7 +205,7 @@ export async function initDashboard(user) {
         if (archiveSearch) archiveSearch.addEventListener('input', (e) => { state.pagination.archive.filter = e.target.value.toLowerCase(); state.pagination.archive.page = 1; render.renderArchiveTable(); });
     }
     
-    if (user.email === config.ADMIN_ROLES.STATION_4) {
+    if (isStation4) {
         setTimeout(() => render.populateReturnSelector(), 3000);
     }
 }

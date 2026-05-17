@@ -1,8 +1,38 @@
 // UI Rendering Logic (Tables, Badges, Modals)
 import { state } from './state.js';
-import { isAnyAdmin, ADMIN_ROLES } from './config.js';
+import {
+    isAnyAdmin,
+    isViewerAdmin,
+    isStation1Admin,
+    isStation2Admin,
+    isStation3Admin,
+    isStation4Admin,
+    canManageFiles
+} from './config.js';
 import { showConfirm } from './utils.js';
 import { supabase } from './config.js';
+
+function normalize(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function isOwnedByCurrentUser(item) {
+    const user = state.currentUser || {};
+    const email = normalize(user.email);
+    const names = new Set([
+        normalize(state.currentUserName),
+        normalize(user.name),
+        normalize(user.user_metadata?.name),
+        normalize(user.user_metadata?.full_name)
+    ].filter(Boolean));
+
+    return normalize(item.issuer_email) === email || names.has(normalize(item.borrower));
+}
+
+function canCurrentUserExportRecordGroup(type, group) {
+    if (canManageFiles(state.currentUser)) return true;
+    return type === 'active' && group.items.every(item => item.status === 'OUT' && isOwnedByCurrentUser(item));
+}
 
 // ==============================================================
 // ADVANCED KIT SWAP LOGIC (Dynamically overrides old HTML modal)
@@ -260,9 +290,9 @@ export function populateReturnSelector() {
 
     // Filter active returns based on Admin Role
     let displayData = state.activeData;
-    if (state.currentUser && state.currentUser.email === ADMIN_ROLES.STATION_1) {
+    if (state.currentUser && isStation1Admin(state.currentUser)) {
         displayData = state.activeData.filter(i => i.department === 'PhilSys' || (i.project && i.project.toLowerCase().includes('philsys')));
-    } else if (state.currentUser && state.currentUser.email === ADMIN_ROLES.STATION_4) {
+    } else if (state.currentUser && isStation4Admin(state.currentUser)) {
         displayData = state.activeData.filter(i => i.department !== 'PhilSys' && !(i.project && i.project.toLowerCase().includes('philsys')));
     }
 
@@ -295,36 +325,41 @@ export function populateReturnSelector() {
 
 export function updateNavBadges(user) {
     // --- ENSURE CORRECT TABS ARE VISIBLE FOR ROLES ---
-    // Actively overrides CSS hiding so Admin 1 can see both Station 1, Station 4, and the Return section
-    if (user && (user.email === ADMIN_ROLES.STATION_1 || user.email === ADMIN_ROLES.STATION_4)) {
+    // Actively overrides CSS hiding so shared station coverage stays visible after refreshes.
+    if (user && canManageFiles(user)) {
         const returnSection = document.getElementById('returnSection');
         if (returnSection) returnSection.style.display = 'block';
     }
 
-    if (user && user.email === ADMIN_ROLES.STATION_1) {
+    if (user && (isStation1Admin(user) || isStation2Admin(user))) {
         const stn1Tab = document.getElementById('nav-stn1');
+        const stn2Tab = document.getElementById('nav-stn2');
         const stn4Tab = document.getElementById('nav-stn4');
         if (stn1Tab) stn1Tab.style.display = 'block';
-        if (stn4Tab) stn4Tab.style.display = 'block';
+        if (stn2Tab) stn2Tab.style.display = 'block';
+        if (isStation1Admin(user) && stn4Tab) stn4Tab.style.display = 'block';
     }
 
     const approvalsBtn = document.querySelector('.nav-item-btn[data-target="view-approvals"]');
     if(approvalsBtn) {
         let count = 0;
-        if(isAnyAdmin(user.email)) {
-            if(user.email === ADMIN_ROLES.STATION_1) {
+        if(isAnyAdmin(user)) {
+            if(isStation1Admin(user) || isStation2Admin(user)) {
                 const s1Count = new Set(state.station1Data.map(i => i.unique_id)).size;
-                const philsysReleasing = state.releasingData.filter(i => i.department === 'PhilSys' || (i.project && i.project.toLowerCase().includes('philsys')));
-                const relCount = new Set(philsysReleasing.map(i => i.unique_id)).size;
-                count = s1Count + relCount; 
+                const s2Count = new Set(state.station2Data.map(i => i.unique_id)).size;
+                count = s1Count + s2Count;
+                if (isStation1Admin(user)) {
+                    const philsysReleasing = state.releasingData.filter(i => i.department === 'PhilSys' || (i.project && i.project.toLowerCase().includes('philsys')));
+                    const relCount = new Set(philsysReleasing.map(i => i.unique_id)).size;
+                    count += relCount;
+                }
             }
-            else if(user.email === ADMIN_ROLES.STATION_2) count = new Set(state.station2Data.map(i => i.unique_id)).size;
-            else if(user.email === ADMIN_ROLES.STATION_3) count = new Set(state.station3Data.map(i => i.unique_id)).size;
-            else if(user.email === ADMIN_ROLES.STATION_4) {
+            else if(isStation3Admin(user)) count = new Set(state.station3Data.map(i => i.unique_id)).size;
+            else if(isStation4Admin(user)) {
                 const psaReleasing = state.releasingData.filter(i => i.department !== 'PhilSys' && !(i.project && i.project.toLowerCase().includes('philsys')));
                 count = new Set(psaReleasing.map(i => i.unique_id)).size;
             }
-            if(user.email === ADMIN_ROLES.VIEWER || user.email === ADMIN_ROLES.VIEWER2) {
+            if(isViewerAdmin(user)) {
                 const allPending = [...state.station1Data, ...state.station2Data, ...state.station3Data, ...state.releasingData];
                 count = new Set(allPending.map(i => i.unique_id)).size;
             }
@@ -490,12 +525,12 @@ export function renderStationTable(data, tbodyId, badgeId, currentStatus, canApp
 
     tbody.innerHTML = "";
     if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">No requests in this station.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">No requests in this station.</td></tr>`;
         return;
     }
 
-    const canExportHere = isAnyAdmin(state.currentUser.email);
-    const canRemoveItems = (state.currentUser.email === ADMIN_ROLES.STATION_1 || state.currentUser.email === ADMIN_ROLES.STATION_4);
+    const canExportHere = isAnyAdmin(state.currentUser);
+    const canRemoveItems = canManageFiles(state.currentUser);
     
     // Grouping includes the department indicator
     const groups = data.reduce((acc, item) => {
@@ -530,7 +565,7 @@ export function renderStationTable(data, tbodyId, badgeId, currentStatus, canApp
         if (canApprove) {
             actionBtns = `
                 <button class="btn btn-primary btn-sm me-1 fw-bold" onclick="window.approveBatch('${batchId}', '${currentStatus}')"><i class="fa fa-arrow-right me-1"></i> ${config.btnText}</button>`;
-        } else if (state.currentUser.email === ADMIN_ROLES.VIEWER || state.currentUser.email === ADMIN_ROLES.VIEWER2) {
+        } else if (isViewerAdmin(state.currentUser)) {
              actionBtns = `<span class="badge bg-light text-secondary border">View Only</span>`;
         } else {
              actionBtns = `<span class="badge bg-light text-secondary border">Pending</span>`;
@@ -557,14 +592,19 @@ export function renderStationTable(data, tbodyId, badgeId, currentStatus, canApp
         
         const itemRows = group.items.map(item => {
             const isKit = item.asset_no === 'Luggage Kit' || (item.description && item.description.includes('[SN:'));
-            const isStation1Admin = state.currentUser.email === ADMIN_ROLES.STATION_1;
+            const isStation1User = isStation1Admin(state.currentUser);
             
             let itemActionBtns = '';
             
             // Add Edit Kit Button for Station 1 Admins using robust encodeURIComponent escaping
-            if (isKit && isStation1Admin) {
+            if (isKit && isStation1User) {
                 const safeDesc = encodeURIComponent(item.description || '');
                 itemActionBtns += `<button class="btn btn-outline-warning btn-sm py-0 me-1" style="font-size:0.7rem" onclick="window.openEditKitModal('${item.id}', '${safeDesc}', '${item.serial}')"><i class="fa fa-pen me-1"></i> Swap Kit</button>`;
+            }
+
+            // Add Replace button for non-kit items in Station 1
+            if (!isKit && isStation1User && canRemoveItems) {
+                itemActionBtns += `<button class="btn btn-outline-warning btn-sm py-0 me-1" style="font-size:0.7rem" onclick="window.openReplaceItemModal('${item.id}', '${encodeURIComponent(item.serial)}', '${encodeURIComponent(item.description || '')}')"><i class="fa fa-right-left me-1"></i> Replace</button>`;
             }
             
             if (canRemoveItems) {
@@ -581,7 +621,7 @@ export function renderStationTable(data, tbodyId, badgeId, currentStatus, canApp
             </tr>`;
         }).join('');
 
-        tbody.innerHTML += summaryRow + `<tr><td colspan="8" class="p-0 border-0"><div class="collapse bg-white" id="collapse-${safeBatchId}"><table class="table table-sm mb-0 table-borderless bg-light bg-opacity-10"><thead class="text-muted small border-bottom"><tr><th class="ps-4">Serial</th><th colspan="2">Description</th><th>Asset</th><th colspan="2">Property No</th><th class="text-center">Action</th></tr></thead><tbody>${itemRows}</tbody></table></div></td></tr>`;
+        tbody.innerHTML += summaryRow + `<tr><td colspan="7" class="p-0 border-0"><div class="collapse bg-white" id="collapse-${safeBatchId}"><table class="table table-sm mb-0 table-borderless bg-light bg-opacity-10"><thead class="text-muted small border-bottom"><tr><th class="ps-4">Serial</th><th colspan="2">Description</th><th>Asset</th><th colspan="2">Property No</th><th class="text-center">Action</th></tr></thead><tbody>${itemRows}</tbody></table></div></td></tr>`;
     });
 
     openAccordions.forEach(id => {
@@ -596,9 +636,9 @@ export function renderReleasingTable(canRelease) {
     if(!tbody) return;
 
     let displayData = state.releasingData;
-    if (state.currentUser.email === ADMIN_ROLES.STATION_1) {
+    if (isStation1Admin(state.currentUser)) {
         displayData = state.releasingData.filter(i => i.department === 'PhilSys' || (i.project && i.project.toLowerCase().includes('philsys')));
-    } else if (state.currentUser.email === ADMIN_ROLES.STATION_4) {
+    } else if (isStation4Admin(state.currentUser)) {
         displayData = state.releasingData.filter(i => i.department !== 'PhilSys' && !(i.project && i.project.toLowerCase().includes('philsys')));
     }
 
@@ -618,12 +658,11 @@ export function renderReleasingTable(canRelease) {
     }
 
     if (displayData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">No items waiting for release.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-3">No items waiting for release.</td></tr>`;
         return;
     }
 
-    const canSelect = isAnyAdmin(state.currentUser.email);
-    const canRemoveItems = (state.currentUser.email === ADMIN_ROLES.STATION_1 || state.currentUser.email === ADMIN_ROLES.STATION_4);
+    const canRemoveItems = canManageFiles(state.currentUser);
     
     // Grouping includes the department indicator
     const groups = displayData.reduce((acc, item) => {
@@ -653,23 +692,23 @@ export function renderReleasingTable(canRelease) {
         const deptBadge = `<span class="badge ${deptBadgeClass} ms-2 shadow-sm" style="font-size: 0.65rem; vertical-align: middle;">${group.department}</span>`;
 
         let actionBtns = '';
-        const effectiveCanRelease = canRelease || state.currentUser.email === ADMIN_ROLES.STATION_1;
+        const effectiveCanRelease = canRelease || isStation1Admin(state.currentUser);
 
         if (effectiveCanRelease) {
             actionBtns = `
                 <button class="btn btn-success btn-sm me-1 fw-bold" onclick="window.confirmReleaseBatch('${batchId}')"><i class="fa fa-box-open me-1"></i> Release</button>`;
-        } else if (state.currentUser.email === ADMIN_ROLES.VIEWER || state.currentUser.email === ADMIN_ROLES.VIEWER2) {
+        } else if (isViewerAdmin(state.currentUser)) {
              actionBtns = `<span class="badge bg-light text-secondary border">View Only</span>`;
         } else {
              actionBtns = `<span class="badge bg-primary text-white">Pending Release</span>`;
         }
 
-        if (canSelect) { actionBtns += `<button class="btn btn-outline-success btn-sm ms-1" onclick="window.triggerExportModal('${batchId}', 'RELEASING')" title="Export this batch"><i class="fa fa-file-export"></i></button>`; }
-        const checkboxContent = canSelect ? `<input type="checkbox" class="export-check form-check-input" value="${group.id}">` : `-`;
+        if (isAnyAdmin(state.currentUser)) {
+            actionBtns += `<button class="btn btn-outline-success btn-sm ms-1" onclick="window.triggerExportModal('${batchId}', 'RELEASING')" title="Export this batch"><i class="fa fa-file-export"></i></button>`;
+        }
 
         const summaryRow = `
             <tr class="table-light border-bottom border-2 border-primary align-middle">
-                <td class="text-center">${checkboxContent}</td>
                 <td class="fw-bold text-primary">
                     <button class="btn btn-sm btn-link text-decoration-none p-0 fw-bold d-flex align-items-center" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-rel-${safeBatchId}">
                         <i class="fa fa-chevron-right me-2 small"></i>${batchId} ${deptBadge}
@@ -678,18 +717,19 @@ export function renderReleasingTable(canRelease) {
                 <td class="fw-bold">${group.borrower}</td>
                 <td><span class="badge bg-secondary">${group.items.length} Items</span></td>
                 <td>${group.destination}</td>
+                <td>${group.project}</td>
                 <td>${group.date}</td>
                 <td class="text-center text-nowrap">${actionBtns}</td>
             </tr>`;
         
         const itemRows = group.items.map(item => {
             const isKit = item.asset_no === 'Luggage Kit' || (item.description && item.description.includes('[SN:'));
-            const isStation1Admin = state.currentUser.email === ADMIN_ROLES.STATION_1;
+            const isStation1User = isStation1Admin(state.currentUser);
             
             let itemActionBtns = '';
             
             // Add Edit Kit Button using robust encodeURIComponent escaping
-            if (isKit && isStation1Admin) {
+            if (isKit && isStation1User) {
                 const safeDesc = encodeURIComponent(item.description || '');
                 itemActionBtns += `<button class="btn btn-outline-warning btn-sm py-0 me-1" style="font-size:0.7rem" onclick="window.openEditKitModal('${item.id}', '${safeDesc}', '${item.serial}')"><i class="fa fa-pen me-1"></i> Swap Kit</button>`;
             }
@@ -708,7 +748,7 @@ export function renderReleasingTable(canRelease) {
             </tr>`;
         }).join('');
         
-        tbody.innerHTML += summaryRow + `<tr><td colspan="8" class="p-0 border-0"><div class="collapse bg-white" id="collapse-rel-${safeBatchId}"><table class="table table-sm mb-0 table-borderless bg-light bg-opacity-10"><thead class="text-muted small border-bottom"><tr><th class="ps-4">Serial</th><th colspan="2">Description</th><th>Asset</th><th colspan="2">Property No</th><th class="text-center">Action</th></tr></thead><tbody>${itemRows}</tbody></table></div></td></tr>`;
+        tbody.innerHTML += summaryRow + `<tr><td colspan="7" class="p-0 border-0"><div class="collapse bg-white" id="collapse-rel-${safeBatchId}"><table class="table table-sm mb-0 table-borderless bg-light bg-opacity-10"><thead class="text-muted small border-bottom"><tr><th class="ps-4">Serial</th><th colspan="2">Description</th><th>Asset</th><th colspan="2">Property No</th><th class="text-center">Action</th></tr></thead><tbody>${itemRows}</tbody></table></div></td></tr>`;
     });
 
     openAccordions.forEach(id => { const el = document.getElementById(id); if (el) { el.classList.add('show'); document.querySelector(`button[data-bs-target="#${id}"]`)?.setAttribute('aria-expanded', 'true'); }});
@@ -750,7 +790,7 @@ export function renderArchiveTable() {
     if (paginated.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">No scanned archives found.</td></tr>`;
     } else {
-        const isAdmin = isAnyAdmin(state.currentUser.email) && state.currentUser.email !== ADMIN_ROLES.VIEWER && state.currentUser.email !== ADMIN_ROLES.VIEWER2;
+        const isAdmin = isAnyAdmin(state.currentUser) && !isViewerAdmin(state.currentUser);
         paginated.forEach(item => {
             const actionBtn = isAdmin ? `<button class="btn btn-outline-danger btn-sm" onclick="window.rejectBatch('${item.unique_id}', 'ARCHIVED')" title="Delete Archive"><i class="fa fa-trash"></i></button>` : '<span class="text-muted">-</span>';
             const deptBadgeClass = item.department === 'PhilSys' ? 'bg-success' : 'bg-primary';
@@ -823,8 +863,8 @@ export function renderTable(type) {
     if (paginatedGroups.length === 0) { tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">No records found.</td></tr>`; } 
     else {
         const today = new Date().toISOString().split('T')[0];
-        const isAdmin = isAnyAdmin(state.currentUser.email);
-        const isViewer = (state.currentUser.email === ADMIN_ROLES.VIEWER || state.currentUser.email === ADMIN_ROLES.VIEWER2);
+        const isAdmin = isAnyAdmin(state.currentUser);
+        const isViewer = isViewerAdmin(state.currentUser);
         
         paginatedGroups.forEach(group => {
             group.items.sort((a, b) => String(a.asset_no || '').localeCompare(String(b.asset_no || ''), undefined, { numeric: true }));
@@ -861,7 +901,7 @@ export function renderTable(type) {
                 else { attachmentCell = `<span class="text-muted small">-</span>`; }
             }
 
-            const canSelect = isAnyAdmin(state.currentUser.email);
+            const canSelect = canCurrentUserExportRecordGroup(type, group);
             const checkboxContent = canSelect ? `<input type="checkbox" class="export-check form-check-input" value="${group.id}">` : `-`;
 
             const summaryRow = `
@@ -881,15 +921,21 @@ export function renderTable(type) {
                     <td>${statusBadge}</td>
                 </tr>`;
 
-            const itemRows = group.items.map(item => `
+            const itemRows = group.items.map(item => {
+                const itemSelectCell = canSelect
+                    ? `<input type="checkbox" class="export-item-check form-check-input me-2" value="${item.id}" data-batch-id="${group.id}" title="Select this serial for export">`
+                    : `<i class="fa fa-arrow-turn-up me-1 small"></i>`;
+
+                return `
                 <tr>
-                    <td class="text-primary fw-bold ps-4" style="width:20%; cursor:pointer;" onclick="window.selectRow('${group.id}')"><i class="fa fa-arrow-turn-up me-1 small"></i><small>${item.serial}</small></td>
+                    <td class="text-primary fw-bold ps-4" style="width:20%">${itemSelectCell}<small>${item.serial}</small></td>
                     <td style="width:20%"><small>${item.description.replace(/{borrowed_from:[^}]+}/g, '<span class="badge bg-warning text-dark border ms-1" style="font-size:0.6rem;">Swapped</span>')}</small></td>
                     <td style="width:10%"><small>${item.asset_no || '-'}</small></td>
                     <td style="width:10%"><small class="text-muted">${item.property_no || '-'}</small></td>
                     <td style="width:15%"><small>${item.destination}</small></td>
                     ${type === 'active' ? `<td style="width:15%"><small>${item.due_date||'-'}</small></td>` : ''}
-                </tr>`).join('');
+                </tr>`;
+            }).join('');
 
             tbody.innerHTML += summaryRow + `<tr><td colspan="9" class="p-0 border-0"><div class="collapse bg-white" id="collapse-${type}-${safeBatchId}"><div class="p-3 bg-light bg-opacity-10 border-bottom"><table class="table table-sm mb-0 table-borderless table-striped"><thead class="text-muted small border-bottom"><tr><th class="ps-4">Serial</th><th>Description</th><th>Asset</th><th>Property No</th><th>Destination</th>${type==='active'?'<th>Due</th>':''}</tr></thead><tbody>${itemRows}</tbody></table></div></div></td></tr>`;
         });
@@ -909,6 +955,11 @@ export function renderTable(type) {
             if (overdueCount > 0) { alertBox.innerText = `${overdueCount} BATCH(ES) OVERDUE`; alertBox.className = "alert alert-danger text-center fw-bold shadow-sm"; } 
             else { alertBox.innerText = "ALL ON SCHEDULE"; alertBox.className = "alert alert-success text-center fw-bold shadow-sm"; }
         }
+    }
+    const exportToolbar = document.getElementById('exportToolbarContainer');
+    if (exportToolbar && !isAnyAdmin(state.currentUser)) {
+        const hasExportableActivePass = (state.activeData || []).some(item => item.status === 'OUT' && isOwnedByCurrentUser(item));
+        exportToolbar.style.setProperty('display', hasExportableActivePass ? 'flex' : 'none', 'important');
     }
     updateUnifiedSelectionCount();
 }
@@ -951,7 +1002,7 @@ export function updateUnifiedSelectionCount() {
         const context = document.querySelector('#recordsTabs .nav-link.active')?.getAttribute('data-context') || 'active';
         tableId = context === 'active' ? 'activeTableBody' : (context === 'history' ? 'historyTableBody' : 'archiveTableBody');
     }
-    const checkBoxes = document.querySelectorAll(`#${tableId} .export-check:checked`);
+    const checkBoxes = document.querySelectorAll(`#${tableId} .export-check:checked, #${tableId} .export-item-check:checked`);
     const count = checkBoxes ? checkBoxes.length : 0;
     const countBadge = document.getElementById('unifiedSelectionCount');
     if (countBadge) countBadge.innerText = `${count} Selected`;
@@ -972,7 +1023,7 @@ export function changePage(type, dir) {
 
 export async function updateBatchDueDate(batchId, newDate) {
     if (!batchId || !newDate) return;
-    if (state.currentUser && (state.currentUser.email === ADMIN_ROLES.VIEWER || state.currentUser.email === ADMIN_ROLES.VIEWER2)) return alert("Read-Only Access.");
+    if (state.currentUser && isViewerAdmin(state.currentUser)) return alert("Read-Only Access.");
     if (!await showConfirm("Update Batch", `Update due date for ${batchId}?`)) return window.refreshTableData();
     try {
         const { error } = await supabase.from('gate_passes').update({ due_date: newDate }).eq('unique_id', batchId);

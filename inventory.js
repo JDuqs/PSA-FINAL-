@@ -445,45 +445,236 @@ export function removeItem(i) {
 // ==========================================
 // MASTER INVENTORY LOGIC (ADMIN VIEW)
 // ==========================================
+// Cached data for client-side filtering
+let _psaInventoryCache = [];
+let _philsysInventoryCache = [];
+
 export async function loadMasterInventory() {
     const tbody = document.getElementById('inventoryTableBody');
     if (!tbody) return; 
     
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>Downloading all 5000+ records...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div>Downloading all records...</td></tr>';
     
     try {
         await updateBorrowedStatus();
         const inventoryData = await fetchAllRecords('inventory');
         
-        tbody.innerHTML = '';
         if (!inventoryData || inventoryData.length === 0) {
             tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">0 items found.</td></tr>`;
             return;
         }
 
-        const validItems = inventoryData.filter(i => i.serial);
-        validItems.sort((a, b) => String(a.asset_no || '').localeCompare(String(b.asset_no || ''), undefined, { numeric: true }));
-        
-        let htmlBuffer = "";
-        validItems.forEach(item => {
-            const serial = String(item.serial);
-            const isOut = state.borrowedSerials && state.borrowedSerials.has(serial.trim());
-            const statusBadge = isOut ? '<span class="badge bg-danger">OUT</span>' : '<span class="badge bg-success">AVAILABLE</span>';
-            
-            htmlBuffer += `
-                <tr class="align-middle">
-                    <td class="font-monospace fw-bold">${serial}</td>
-                    <td>${item.property_no || '-'}</td>
-                    <td class="small">${item.description || '-'}</td>
-                    <td><span class="badge bg-light text-dark border">${item.asset_no || '-'}</span></td>
-                    <td class="text-center">${statusBadge}</td>
-                </tr>
-            `;
+        _psaInventoryCache = inventoryData.filter(i => i.serial);
+        _psaInventoryCache.sort((a, b) => String(a.asset_no || '').localeCompare(String(b.asset_no || ''), undefined, { numeric: true }));
+
+        // --- AVAILABLE STOCKS SUMMARY CARDS ---
+        const categoryOrder = ['Tablets', 'Laptops', 'Desktops', 'Monitors', 'Peripherals', 'Others'];
+        const catTotals = {}, catAvailable = {};
+        _psaInventoryCache.forEach(item => {
+            const cat = detectItemCategory(item.description);
+            catTotals[cat] = (catTotals[cat] || 0) + 1;
+            if (!state.borrowedSerials?.has(String(item.serial).trim()))
+                catAvailable[cat] = (catAvailable[cat] || 0) + 1;
         });
-        tbody.innerHTML = htmlBuffer;
+        const summaryEl = document.getElementById('inventoryStockSummary');
+        if (summaryEl) {
+            const catColors = { Tablets: 'primary', Laptops: 'info', Desktops: 'secondary', Monitors: 'warning', Peripherals: 'success', Others: 'dark' };
+            summaryEl.innerHTML = categoryOrder.filter(c => catTotals[c]).map(cat => {
+                const avail = catAvailable[cat] || 0, total = catTotals[cat] || 0;
+                const color = catColors[cat] || 'secondary';
+                return `<div class="col-6 col-md-4 col-lg-2">
+                    <div class="card border-${color} shadow-sm text-center py-2 px-1" style="cursor:pointer;" onclick="document.getElementById('psaInvCategoryFilter').value='${cat}';window._renderPsaInventoryTable()">
+                        <div class="fw-bold text-${color}" style="font-size:1.4rem;">${avail}</div>
+                        <div class="small text-muted">/ ${total} total</div>
+                        <div class="small fw-bold text-truncate">${cat}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // Wire up filters (only once)
+        const searchEl = document.getElementById('psaInvSearch');
+        const catEl = document.getElementById('psaInvCategoryFilter');
+        const statusEl = document.getElementById('psaInvStatusFilter');
+        if (searchEl && !searchEl.dataset.wired) {
+            searchEl.dataset.wired = '1';
+            searchEl.addEventListener('input', window._renderPsaInventoryTable);
+            catEl?.addEventListener('change', window._renderPsaInventoryTable);
+            statusEl?.addEventListener('change', window._renderPsaInventoryTable);
+        }
+
+        window._renderPsaInventoryTable();
 
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error: ${err.message}</td></tr>`;
+    }
+}
+
+window._renderPsaInventoryTable = function() {
+    const tbody = document.getElementById('inventoryTableBody');
+    if (!tbody) return;
+    const search = (document.getElementById('psaInvSearch')?.value || '').toLowerCase();
+    const cat = document.getElementById('psaInvCategoryFilter')?.value || 'all';
+    const status = document.getElementById('psaInvStatusFilter')?.value || 'all';
+
+    const filtered = _psaInventoryCache.filter(item => {
+        const isOut = state.borrowedSerials?.has(String(item.serial).trim());
+        if (status === 'available' && isOut) return false;
+        if (status === 'out' && !isOut) return false;
+        if (cat !== 'all' && detectItemCategory(item.description) !== cat) return false;
+        if (search) {
+            const haystack = `${item.serial} ${item.description} ${item.asset_no} ${item.property_no}`.toLowerCase();
+            if (!haystack.includes(search)) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No items match the current filters.</td></tr>`;
+        return;
+    }
+
+    let html = '';
+    filtered.forEach(item => {
+        const isOut = state.borrowedSerials?.has(String(item.serial).trim());
+        const badge = isOut ? '<span class="badge bg-danger">OUT</span>' : '<span class="badge bg-success">AVAILABLE</span>';
+        html += `<tr class="align-middle">
+            <td class="font-monospace fw-bold">${item.serial}</td>
+            <td>${item.property_no || '-'}</td>
+            <td class="small">${item.description || '-'}</td>
+            <td class="text-center"><span class="badge bg-light text-dark border">${item.asset_no || '-'}</span></td>
+            <td class="text-center">${badge}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+};
+
+export async function loadPhilSysInventoryTable() {
+    const tbody = document.getElementById('philsysInvTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4"><div class="spinner-border text-success spinner-border-sm me-2"></div>Loading PhilSys kits...</td></tr>';
+
+    try {
+        // Get active kit serials from gate_passes
+        const { data: activePasses } = await supabase.from('gate_passes')
+            .select('serial')
+            .in('status', ['PENDING_PROPERTY','PENDING_INSPECTION','PENDING_OIC','RELEASING','OUT']);
+        const activeSerials = new Set((activePasses || []).map(p => String(p.serial).trim()));
+
+        const { data, error } = await supabase.from('philsys_inventory').select('*').order('kit_serial', { ascending: true });
+        if (error) throw error;
+
+        _philsysInventoryCache = data || [];
+
+        // Summary
+        const total = _philsysInventoryCache.length;
+        const available = _philsysInventoryCache.filter(k => !activeSerials.has(String(k.kit_serial).trim())).length;
+        const summaryEl = document.getElementById('philsysStockSummary');
+        if (summaryEl) {
+            summaryEl.innerHTML = `
+                <div class="d-flex gap-3 flex-wrap">
+                    <span class="badge bg-success fs-6 px-3 py-2"><i class="fa fa-check-circle me-1"></i>${available} Available</span>
+                    <span class="badge bg-danger fs-6 px-3 py-2"><i class="fa fa-box-open me-1"></i>${total - available} Out</span>
+                    <span class="badge bg-secondary fs-6 px-3 py-2"><i class="fa fa-database me-1"></i>${total} Total Kits</span>
+                </div>`;
+        }
+
+        // Wire up filters (only once)
+        const searchEl = document.getElementById('philsysInvSearch');
+        const statusEl = document.getElementById('philsysInvStatusFilter');
+        if (searchEl && !searchEl.dataset.wired) {
+            searchEl.dataset.wired = '1';
+            searchEl.addEventListener('input', () => window._renderPhilSysInventoryTable(activeSerials));
+            statusEl?.addEventListener('change', () => window._renderPhilSysInventoryTable(activeSerials));
+        }
+
+        window._renderPhilSysInventoryTable(activeSerials);
+
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-4">Error: ${err.message}</td></tr>`;
+    }
+}
+
+window._renderPhilSysInventoryTable = function(activeSerials) {
+    const tbody = document.getElementById('philsysInvTableBody');
+    if (!tbody) return;
+    const search = (document.getElementById('philsysInvSearch')?.value || '').toLowerCase();
+    const status = document.getElementById('philsysInvStatusFilter')?.value || 'all';
+
+    const filtered = _philsysInventoryCache.filter(kit => {
+        const isOut = activeSerials?.has(String(kit.kit_serial).trim());
+        if (status === 'available' && isOut) return false;
+        if (status === 'out' && !isOut) return false;
+        if (search) {
+            const haystack = Object.values(kit).join(' ').toLowerCase();
+            if (!haystack.includes(search)) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No kits match the current filters.</td></tr>';
+        return;
+    }
+
+    const na = (v) => v || '<span class="text-muted">—</span>';
+    tbody.innerHTML = filtered.map(kit => {
+        const isOut = activeSerials?.has(String(kit.kit_serial).trim());
+        const badge = isOut ? '<span class="badge bg-danger">OUT</span>' : '<span class="badge bg-success">AVAILABLE</span>';
+        return `<tr class="align-middle">
+            <td class="fw-bold font-monospace">${na(kit.kit_serial)}</td>
+            <td class="small">${na(kit.laptop_model)}</td>
+            <td class="small font-monospace">${na(kit.laptop_sn)}</td>
+            <td class="small font-monospace">${na(kit.scanner_sn)}</td>
+            <td class="small font-monospace">${na(kit.iris_sn)}</td>
+            <td class="small font-monospace">${na(kit.webcam_sn)}</td>
+            <td class="small font-monospace">${na(kit.doc_scanner_sn)}</td>
+            <td class="small font-monospace">${na(kit.monitor_sn)}</td>
+            <td class="small font-monospace">${na(kit.printer_sn)}</td>
+            <td class="text-center">${badge}</td>
+        </tr>`;
+    }).join('');
+};
+
+export async function exportMasterInventoryExcel() {
+    const btn = document.getElementById('exportInventoryBtn');
+    const originalHtml = btn?.innerHTML;
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin me-2"></i>DOWNLOADING...';
+    }
+
+    try {
+        const inventoryData = await fetchAllRecords('inventory');
+        const rows = (inventoryData || [])
+            .filter(item => item.serial)
+            .map(item => ({
+                serial_no: item.serial || '',
+                property_no: item.property_no || '',
+                description: item.description || '',
+                asset_no: item.asset_no || ''
+            }));
+
+        if (rows.length === 0) {
+            alert('No data found in PSA Inventory.');
+            return;
+        }
+
+        rows.sort((a, b) => String(a.asset_no || '').localeCompare(String(b.asset_no || ''), undefined, { numeric: true }));
+
+        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, 'PSA_Inventory');
+        window.XLSX.writeFile(wb, 'PSA_Master_Inventory.xlsx');
+    } catch (err) {
+        alert('Export error: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml || '<i class="fa fa-file-excel me-2"></i> DOWNLOAD PSA INVENTORY TO EXCEL';
+        }
     }
 }
 
@@ -605,3 +796,4 @@ window.clearCart = clearCart;
 window.removeItem = removeItem;
 window.selectInventoryItem = selectInventoryItem;
 window.loadMasterInventory = loadMasterInventory;
+window.exportMasterInventoryExcel = exportMasterInventoryExcel;

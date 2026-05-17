@@ -1,5 +1,17 @@
 // Workflow Logic: Issue, Approve, Release, Return, Historical Log
-import { supabase, ADMIN_ROLES, isAnyAdmin } from './config.js';
+import {
+    supabase,
+    isAnyAdmin,
+    isViewerAdmin,
+    isStation1Admin,
+    isStation2Admin,
+    isStation3Admin,
+    isStation4Admin,
+    canHandleDepartmentRelease,
+    canHandleStation1,
+    canHandleStation2,
+    canManageFiles
+} from './config.js';
 import { state } from './state.js';
 import { showConfirm, getNextGatePassID } from './utils.js';
 import { renderCart } from './inventory.js';
@@ -88,8 +100,8 @@ export async function handleIssue() {
         console.error("Date validation error:", e);
     }
 
-    const isViewer = state.currentUser.email === ADMIN_ROLES.VIEWER || state.currentUser.email === ADMIN_ROLES.VIEWER2;
-    const isAdmin = isAnyAdmin(state.currentUser.email) && !isViewer;
+    const isViewer = isViewerAdmin(state.currentUser);
+    const isAdmin = isAnyAdmin(state.currentUser) && !isViewer;
 
     for (const item of state.cart) {
         if (state.borrowedSerials.has(item.serial)) return alert(`Serial ${item.serial} is currently PENDING or OUT.`);
@@ -161,10 +173,10 @@ export async function approveBatch(batchId, currentStatus) {
     let confirmMsg = '';
     let successMsg = '';
     
-    const email = state.currentUser.email;
-    if (currentStatus === 'PENDING_PROPERTY' && email !== ADMIN_ROLES.STATION_1) return alert("Only Property (Station 1) can approve this.");
-    if (currentStatus === 'PENDING_INSPECTION' && email !== ADMIN_ROLES.STATION_2) return alert("Only Inspection (Station 2) can approve this.");
-    if (currentStatus === 'PENDING_OIC' && email !== ADMIN_ROLES.STATION_3) return alert("Only OIC (Station 3) can approve this.");
+    const currentUser = state.currentUser;
+    if (currentStatus === 'PENDING_PROPERTY' && !canHandleStation1(currentUser)) return alert("Only Property or Inspection admins can approve this.");
+    if (currentStatus === 'PENDING_INSPECTION' && !canHandleStation2(currentUser)) return alert("Only Property or Inspection admins can approve this.");
+    if (currentStatus === 'PENDING_OIC' && !isStation3Admin(currentUser)) return alert("Only OIC (Station 3) can approve this.");
 
     if (currentStatus === 'PENDING_PROPERTY') { nextStatus = 'PENDING_INSPECTION'; confirmMsg = `Move ${batchId} to Inspection?`; successMsg = "Moved to Inspection."; } 
     else if (currentStatus === 'PENDING_INSPECTION') { nextStatus = 'PENDING_OIC'; confirmMsg = `Move ${batchId} to OIC?`; successMsg = "Moved to OIC."; } 
@@ -205,10 +217,8 @@ export async function approveBatch(batchId, currentStatus) {
 }
 
 export function confirmReleaseBatch(batchId) {
-    const email = state.currentUser?.email;
-    
     // Only Station 1 and Station 4 can even open the release modal
-    if (email !== ADMIN_ROLES.STATION_4 && email !== ADMIN_ROLES.STATION_1) {
+    if (!canManageFiles(state.currentUser)) {
         return alert("Unauthorized. Only Admins can release items.");
     }
 
@@ -216,11 +226,10 @@ export function confirmReleaseBatch(batchId) {
     const batchItems = state.releasingData.filter(i => i.unique_id === batchId);
     if (batchItems.length > 0) {
         const dept = batchItems[0].department || 'PSA';
-        if (dept === 'PhilSys' && email !== ADMIN_ROLES.STATION_1) {
-            return alert("Unauthorized: Only Admin1 (Station 1) can release PhilSys kits.");
-        }
-        if (dept !== 'PhilSys' && email !== ADMIN_ROLES.STATION_4) {
-            return alert("Unauthorized: Only Admin (Station 4) can release standard PSA items.");
+        if (!canHandleDepartmentRelease(state.currentUser, dept)) {
+            return alert(dept === 'PhilSys'
+                ? "Unauthorized: Only Admin1 (Station 1) can release PhilSys kits."
+                : "Unauthorized: Only Admin (Station 4) can release standard PSA items.");
         }
     }
     
@@ -245,8 +254,6 @@ export async function handleReleaseSubmit() {
     if (!guardName) return alert("Please enter the Guard Name.");
     if (!pdfFile) return alert("Please upload the signed gate pass PDF.");
 
-    const email = state.currentUser?.email;
-
     const btn = document.getElementById('btnConfirmRelease');
     const originalText = btn.innerHTML;
     btn.disabled = true;
@@ -261,11 +268,10 @@ export async function handleReleaseSubmit() {
         }
 
         const dept = batchData[0].department || 'PSA';
-        if (dept === 'PhilSys' && email !== ADMIN_ROLES.STATION_1) {
-            throw new Error("Unauthorized: Only Admin1 can release PhilSys kits.");
-        }
-        if (dept !== 'PhilSys' && email !== ADMIN_ROLES.STATION_4) {
-            throw new Error("Unauthorized: Only Admin can release standard PSA items.");
+        if (!canHandleDepartmentRelease(state.currentUser, dept)) {
+            throw new Error(dept === 'PhilSys'
+                ? "Unauthorized: Only Admin1 can release PhilSys kits."
+                : "Unauthorized: Only Admin can release standard PSA items.");
         }
 
         const issuerEmail = batchData[0].issuer_email;
@@ -325,7 +331,7 @@ export async function handleReleaseSubmit() {
 }
 
 export async function rejectBatch(batchId, currentStatus) {
-     if (state.currentUser && (state.currentUser.email === ADMIN_ROLES.VIEWER || state.currentUser.email === ADMIN_ROLES.VIEWER2)) return alert("Read-Only Access: Cannot reject batches.");
+     if (state.currentUser && isViewerAdmin(state.currentUser)) return alert("Read-Only Access: Cannot reject batches.");
      if (!await showConfirm("Delete/Reject", `Are you sure you want to delete ${batchId}?`)) return;
      try {
         const { data: batchData } = await supabase.from('gate_passes').select('unique_id, issuer_email, description, serial').eq('unique_id', batchId).eq('status', currentStatus);
@@ -357,7 +363,7 @@ export async function rejectBatch(batchId, currentStatus) {
 }
 
 export async function rejectRequest(id) {
-    if (state.currentUser && (state.currentUser.email === ADMIN_ROLES.VIEWER || state.currentUser.email === ADMIN_ROLES.VIEWER2)) return alert("Read-Only Access: Cannot reject items.");
+    if (state.currentUser && isViewerAdmin(state.currentUser)) return alert("Read-Only Access: Cannot reject items.");
     if (!await showConfirm("Deny/Reject", "Deny/Reject this specific item?")) return;
     try {
         const { data: itemData } = await supabase.from('gate_passes').select('unique_id, issuer_email, description, serial').eq('id', id).single();
@@ -389,14 +395,141 @@ export async function rejectRequest(id) {
     } catch(e) { alert(e.message); }
 }
 
-export async function handleReturn() {
-    const email = state.currentUser?.email;
+// =========================================================================
+// REPLACE ITEM — Station 1 can swap a rejected item with one from inventory
+// =========================================================================
+window.openReplaceItemModal = async function(gatePassId, encodedSerial, encodedDesc) {
+    const currentSerial = decodeURIComponent(encodedSerial);
+    const currentDesc = decodeURIComponent(encodedDesc);
 
+    let modalEl = document.getElementById('replaceItemModal');
+    if (!modalEl) {
+        modalEl = document.createElement('div');
+        modalEl.id = 'replaceItemModal';
+        modalEl.className = 'modal fade';
+        modalEl.innerHTML = `
+            <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title fw-bold"><i class="fa fa-right-left me-2"></i> Replace Item</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="alert alert-secondary border mb-3 small">
+                            <strong>Current item:</strong> <span id="replaceCurrentSerial" class="font-monospace"></span><br>
+                            <span id="replaceCurrentDesc" class="text-muted"></span>
+                        </div>
+                        <label class="fw-bold small mb-1">Search Replacement from Inventory</label>
+                        <div class="input-group mb-2">
+                            <input type="text" id="replaceSearchInput" class="form-control" placeholder="Type serial, description or asset tag...">
+                            <button class="btn btn-primary" type="button" id="btnReplaceSearch"><i class="fa fa-search"></i></button>
+                        </div>
+                        <div class="table-responsive" style="max-height:320px; overflow-y:auto;">
+                            <table class="table table-sm table-hover table-bordered align-middle mb-0">
+                                <thead class="table-light sticky-top"><tr><th>Serial</th><th>Description</th><th>Asset Tag</th><th>Property No.</th><th class="text-center">Select</th></tr></thead>
+                                <tbody id="replaceItemResults"><tr><td colspan="5" class="text-center text-muted py-3">Search for an item above.</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modalEl);
+    }
+
+    // Store the gate pass row id for use on selection
+    modalEl.dataset.gatePassId = gatePassId;
+
+    document.getElementById('replaceCurrentSerial').textContent = currentSerial;
+    document.getElementById('replaceCurrentDesc').textContent = currentDesc;
+    document.getElementById('replaceSearchInput').value = '';
+    document.getElementById('replaceItemResults').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Search for an item above.</td></tr>';
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    const doSearch = async () => {
+        const term = document.getElementById('replaceSearchInput').value.trim();
+        const tbody = document.getElementById('replaceItemResults');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Searching...</td></tr>';
+
+        try {
+            // Get currently borrowed serials so we don't offer unavailable items
+            const { data: borrowed } = await supabase.from('gate_passes')
+                .select('serial')
+                .in('status', ['PENDING_PROPERTY','PENDING_INSPECTION','PENDING_OIC','RELEASING','OUT']);
+            const borrowedSet = new Set((borrowed || []).map(r => r.serial));
+
+            let query = supabase.from('inventory').select('*');
+            if (term) {
+                query = query.or(`serial.ilike.%${term}%,description.ilike.%${term}%,asset_no.ilike.%${term}%`);
+            }
+            const { data, error } = await query.order('asset_no', { ascending: true }).limit(100);
+            if (error) throw error;
+
+            const available = (data || []).filter(i => i.serial && !borrowedSet.has(i.serial));
+            if (!available.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No available items found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = available.map(i => `
+                <tr>
+                    <td class="font-monospace small">${i.serial || ''}</td>
+                    <td class="small">${i.description || ''}</td>
+                    <td class="small text-center">${i.asset_no || '-'}</td>
+                    <td class="small text-center">${i.property_no || '-'}</td>
+                    <td class="text-center">
+                        <button class="btn btn-success btn-sm py-0"
+                            onclick="window.confirmReplaceItem('${encodeURIComponent(i.serial)}','${encodeURIComponent(i.description||'')}','${encodeURIComponent(i.asset_no||'')}','${encodeURIComponent(i.property_no||'')}')">
+                            <i class="fa fa-check me-1"></i>Select
+                        </button>
+                    </td>
+                </tr>`).join('');
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-3">${e.message}</td></tr>`;
+        }
+    };
+
+    // Wire up search button and Enter key (replace previous listeners cleanly)
+    const searchBtn = document.getElementById('btnReplaceSearch');
+    const searchInput = document.getElementById('replaceSearchInput');
+    searchBtn.onclick = doSearch;
+    searchInput.onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+};
+
+window.confirmReplaceItem = async function(encSerial, encDesc, encAsset, encProp) {
+    const newSerial = decodeURIComponent(encSerial);
+    const newDesc = decodeURIComponent(encDesc);
+    const newAsset = decodeURIComponent(encAsset);
+    const newProp = decodeURIComponent(encProp);
+
+    const modalEl = document.getElementById('replaceItemModal');
+    const gatePassId = modalEl?.dataset.gatePassId;
+    if (!gatePassId) return alert('System error: no item selected.');
+
+    if (!await showConfirm('Replace Item', `Replace current item with:\n${newSerial} — ${newDesc}?`)) return;
+
+    try {
+        const { error } = await supabase.from('gate_passes').update({
+            serial: newSerial,
+            description: newDesc,
+            asset_no: newAsset || null,
+            property_no: newProp || null
+        }).eq('id', gatePassId);
+        if (error) throw error;
+
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+        alert(`Item replaced with ${newSerial} successfully.`);
+        window.refreshTableData();
+    } catch(e) { alert(e.message); }
+};
+
+export async function handleReturn() {
     // Both Station 1 & 4 can initiate returns depending on the department
-    if (email !== ADMIN_ROLES.STATION_4 && email !== ADMIN_ROLES.STATION_1) {
+    if (!canManageFiles(state.currentUser)) {
         return alert("Unauthorized. Only Admins can process returns.");
     }
-    if (state.currentUser && (email === ADMIN_ROLES.VIEWER || email === ADMIN_ROLES.VIEWER2)) return alert("Read-Only Access.");
+    if (state.currentUser && isViewerAdmin(state.currentUser)) return alert("Read-Only Access.");
     
     const batchId = document.getElementById('returnBatchID').value.trim();
     const g = document.getElementById('guardIn').value.trim();
@@ -412,11 +545,10 @@ export async function handleReturn() {
 
     // Verify Department Ownership Before Returning
     const dept = data[0].department || 'PSA';
-    if (dept === 'PhilSys' && email !== ADMIN_ROLES.STATION_1) {
-        return alert("Unauthorized: Only Admin1 (Station 1) can return PhilSys kits.");
-    }
-    if (dept !== 'PhilSys' && email !== ADMIN_ROLES.STATION_4) {
-        return alert("Unauthorized: Only Admin (Station 4) can return standard PSA items.");
+    if (!canHandleDepartmentRelease(state.currentUser, dept)) {
+        return alert(dept === 'PhilSys'
+            ? "Unauthorized: Only Admin1 (Station 1) can return PhilSys kits."
+            : "Unauthorized: Only Admin can return standard PSA items.");
     }
 
     if (!await showConfirm("Batch Return", `Return all ${data.length} items for Batch ${batchId}?`)) return;
@@ -542,7 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // =========================================================================
 
 export async function handleHistoricalImport() {
-    if (state.currentUser.email !== ADMIN_ROLES.STATION_4 && state.currentUser.email !== ADMIN_ROLES.STATION_1) {
+    if (!canManageFiles(state.currentUser)) {
          return alert("Unauthorized. Only Admins can upload archives.");
     }
 
@@ -660,11 +792,11 @@ export async function processImportFile() {
             const tbody = document.getElementById('importBody'); 
             if (tbody) {
                 tbody.innerHTML = "";
-                state.bulkImportData.slice(0, 5).forEach(d => { 
+                state.bulkImportData.slice(0, 25).forEach(d => { 
                     tbody.innerHTML += `<tr><td>${d.serial}</td><td>${d.property_no || '-'}</td><td>${d.description || '-'}</td><td>${d.asset_no || '-'}</td></tr>`; 
                 });
-                if (state.bulkImportData.length > 5) {
-                    tbody.innerHTML += `<tr><td colspan="4" class="text-center text-muted small py-2 bg-light">...and ${state.bulkImportData.length - 5} more items</td></tr>`;
+                if (state.bulkImportData.length > 25) {
+                    tbody.innerHTML += `<tr><td colspan="4" class="text-center text-muted small py-2 bg-light">...and ${state.bulkImportData.length - 25} more items</td></tr>`;
                 }
             }
             
@@ -675,13 +807,13 @@ export async function processImportFile() {
             
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fa fa-magnifying-glass me-2"></i> PREVIEW EXCEL DATA';
+                btn.innerHTML = '<i class="fa fa-magnifying-glass me-2"></i> PREVIEW PSA EXCEL DATA';
             }
         } catch (err) {
             alert("Excel Error: " + err.message);
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fa fa-magnifying-glass me-2"></i> PREVIEW EXCEL DATA';
+                btn.innerHTML = '<i class="fa fa-magnifying-glass me-2"></i> PREVIEW PSA EXCEL DATA';
             }
         }
     };
@@ -726,10 +858,3 @@ export async function saveBulkImport() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const btnProcess = document.getElementById('processImportBtn');
-    if (btnProcess) btnProcess.addEventListener('click', processImportFile);
-
-    const btnSave = document.getElementById('saveBulkBtn');
-    if (btnSave) btnSave.addEventListener('click', saveBulkImport);
-});

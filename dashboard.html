@@ -18,19 +18,23 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
-        :root { 
-            --psa-blue: #003399; 
+        :root {
+            --psa-blue: #003399;
             --psa-dark-blue: #002266;
-            --psa-yellow: #ffcc00; 
+            --psa-yellow: #ffcc00;
             --psa-yellow-hover: #e6b800;
-            --bg-gray: #f4f7f9; 
-            --sidebar-width: 260px;
+            --psa-blue-soft: #edf3ff;
+            --psa-ink: #173250;
+            --bg-gray: #f4f7f9;
+            --sidebar-width: 280px;
         }
         
-        body { 
-            background-color: var(--bg-gray); 
-            font-family: 'Segoe UI', system-ui, sans-serif; 
-            overflow: hidden; 
+        body {
+            background:
+                radial-gradient(circle at top left, rgba(0, 51, 153, 0.08), transparent 28%),
+                linear-gradient(180deg, #f8fbff 0%, var(--bg-gray) 100%);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
             height: 100vh;
             margin: 0;
         }
@@ -45,25 +49,29 @@
         /* SIDEBAR */
         .sidebar {
             width: var(--sidebar-width);
-            background-color: var(--psa-dark-blue);
+            background: linear-gradient(180deg, var(--psa-dark-blue) 0%, var(--psa-blue) 100%);
             color: white;
             display: flex;
             flex-direction: column;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            box-shadow: 8px 0 24px rgba(0, 34, 102, 0.14);
             z-index: 100;
             flex-shrink: 0;
             transition: all 0.3s;
         }
         .sidebar-brand {
-            padding: 20px;
-            background-color: var(--psa-blue);
+            padding: 26px 22px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
             border-bottom: 4px solid var(--psa-yellow);
             text-align: center;
         }
         .sidebar-brand img {
-            height: 55px;
-            margin-bottom: 10px;
-            filter: drop-shadow(0 0 2px rgba(255,255,255,0.2));
+            height: 64px;
+            margin-bottom: 12px;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.18));
+        }
+        .sidebar-brand small {
+            color: rgba(255,255,255,0.78);
+            letter-spacing: 0.08em;
         }
         .sidebar-nav {
             padding: 20px 0;
@@ -83,19 +91,19 @@
             font-size: 0.95rem;
         }
         .nav-item-btn:hover {
-            background-color: rgba(255,255,255,0.05);
+            background-color: rgba(255,255,255,0.10);
             color: white;
         }
         .nav-item-btn.active {
-            background-color: rgba(255, 204, 0, 0.1);
-            color: var(--psa-yellow);
+            background-color: rgba(255,255,255,0.12);
+            color: white;
             border-left-color: var(--psa-yellow);
         }
         .nav-item-btn i { width: 25px; text-align: center; margin-right: 12px; font-size: 1.1rem; }
         
         .sidebar-footer {
             padding: 15px 20px;
-            background-color: rgba(0,0,0,0.2);
+            background-color: rgba(0,0,0,0.16);
             font-size: 0.85rem;
         }
 
@@ -105,18 +113,20 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            background-color: var(--bg-gray);
+            background-color: transparent;
         }
         
         .topbar {
-            height: 70px;
-            background: white;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            min-height: 78px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 2px 16px rgba(0,0,0,0.05);
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 30px;
             z-index: 10;
+            border-bottom: 1px solid rgba(0, 51, 153, 0.08);
         }
 
         .view-container {
@@ -131,27 +141,28 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
         /* UI COMPONENTS */
-        .section-card { 
-            background: white; 
-            padding: 25px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.03); 
-            margin-bottom: 25px; 
-            border: 1px solid rgba(0,0,0,0.05);
+        .section-card {
+            background: rgba(255, 255, 255, 0.96);
+            padding: 25px;
+            border-radius: 18px;
+            box-shadow: 0 16px 36px rgba(0, 51, 153, 0.07);
+            margin-bottom: 25px;
+            border: 1px solid rgba(0, 51, 153, 0.08);
         }
-        .section-title { 
-            font-weight: 700; 
-            color: var(--psa-blue); 
-            margin-bottom: 20px; 
-            text-transform: uppercase; 
-            border-left: 5px solid var(--psa-yellow); 
-            padding-left: 15px; 
+        .section-title {
+            font-weight: 800;
+            color: var(--psa-blue);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            border-left: 5px solid var(--psa-yellow);
+            padding-left: 15px;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            letter-spacing: 0.04em;
         }
-        .btn-primary { background-color: var(--psa-blue); border: none; font-weight: bold; }
-        .btn-primary:hover { background-color: var(--psa-dark-blue); }
+        .btn-primary { background: linear-gradient(135deg, var(--psa-blue), #1950c2); border: none; font-weight: bold; }
+        .btn-primary:hover { background: linear-gradient(135deg, var(--psa-dark-blue), var(--psa-blue)); }
         .btn-psa-yellow { background-color: var(--psa-yellow); color: var(--psa-blue); font-weight: 700; border: none; }
         .btn-psa-yellow:hover { background-color: var(--psa-yellow-hover); }
         
@@ -159,14 +170,15 @@
         .clock-time { font-family: 'Courier New', monospace; font-size: 2.2rem; font-weight: bold; color: var(--psa-yellow); }
         
         .table { font-size: 0.85rem; vertical-align: middle; }
+        .table-hover tbody tr:hover { background-color: #f6f9ff; }
         .sticky-header th { position: sticky; top: 0; z-index: 10; }
         
         .user-badge {
-            background: rgba(0, 51, 153, 0.08);
+            background: var(--psa-blue-soft);
             padding: 8px 18px;
-            border-radius: 20px;
+            border-radius: 999px;
             color: var(--psa-blue);
-            font-weight: 600;
+            font-weight: 700;
             display: flex;
             align-items: center;
             border: 1px solid rgba(0, 51, 153, 0.15);
@@ -174,11 +186,11 @@
 
         /* EXPORT TOOLBAR */
         .export-toolbar {
-            background: linear-gradient(to right, #ffffff, #f8f9fa);
+            background: linear-gradient(to right, #ffffff, #f8fbff);
             padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #e0e5ec;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+            border-radius: 18px;
+            border: 1px solid rgba(0, 51, 153, 0.08);
+            box-shadow: 0 12px 28px rgba(0, 51, 153, 0.05);
             margin-bottom: 25px;
             display: flex;
             justify-content: space-between;
@@ -194,7 +206,7 @@
         }
 
         /* MODALS */
-        .modal-content { border: none; border-radius: 15px; }
+        .modal-content { border: none; border-radius: 18px; box-shadow: 0 20px 40px rgba(0, 51, 153, 0.16); }
         .modal-header { border-bottom: none; padding-bottom: 0; }
         .modal-footer { border-top: none; justify-content: center; padding-bottom: 25px; }
         .confirm-icon { font-size: 3rem; color: var(--psa-blue); margin-bottom: 15px; }
@@ -206,8 +218,30 @@
         }
         .badge-pulse { animation: pulse-red 2s infinite; }
         
-        .nav-pills .nav-link { color: #555; font-weight: 600; margin-right: 5px; border-radius: 8px; padding: 10px 20px;}
+        .nav-pills .nav-link { color: #555; font-weight: 600; margin-right: 5px; border-radius: 10px; padding: 10px 20px;}
         .nav-pills .nav-link.active { background-color: var(--psa-blue); color: white; }
+
+        .topbar-copy small {
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #70839a;
+            font-weight: 700;
+        }
+
+        .topbar-copy h4 {
+            color: var(--psa-ink);
+        }
+
+        .form-control,
+        .form-select {
+            border-color: #d7e0f0;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+            border-color: var(--psa-blue);
+            box-shadow: 0 0 0 0.2rem rgba(0, 51, 153, 0.12);
+        }
 
         /* CUSTOM SCROLLBAR FOR ENHANCED VISIBILITY */
         .custom-scrollbar::-webkit-scrollbar {
@@ -236,6 +270,30 @@
             -ms-overflow-style: none;  /* IE and Edge */
             scrollbar-width: none;  /* Firefox */
         }
+
+        @media (max-width: 992px) {
+            body {
+                overflow: auto;
+                height: auto;
+            }
+            #app-screen {
+                flex-direction: column;
+                height: auto;
+                min-height: 100vh;
+            }
+            .sidebar,
+            .main-wrapper {
+                width: 100%;
+            }
+            .topbar {
+                padding: 18px 20px;
+                gap: 14px;
+                flex-wrap: wrap;
+            }
+            .view-container {
+                padding: 20px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -246,7 +304,9 @@
         <nav class="sidebar">
             <div class="sidebar-brand">
                 <img src="PSA.png" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Philippine_Statistics_Authority_%28PSA%29_logo.svg/1024px-Philippine_Statistics_Authority_%28PSA%29_logo.svg.png'" alt="PSA">
-                <div class="fw-bold text-uppercase small" style="letter-spacing: 1px;">Gate Pass System</div>
+                <small class="d-block text-uppercase fw-bold">Philippine Statistics Authority</small>
+                <div class="fw-bold">Gate Pass System</div>
+                <div class="text-white-50 small mt-1">Operations Dashboard</div>
             </div>
             
             <div class="sidebar-nav">
@@ -282,7 +342,10 @@
             
             <!-- TOP BAR -->
             <header class="topbar">
-                <h4 class="m-0 fw-bold text-dark" id="topbar-title">Issuance Desk</h4>
+                <div class="topbar-copy">
+                    <small>PSA Operations</small>
+                    <h4 class="m-0 fw-bold" id="topbar-title">Issuance Desk</h4>
+                </div>
                 <div id="currentUserDisplay" class="user-badge">
                     <!-- Injected by JS -->
                 </div>
@@ -467,7 +530,7 @@
                             </div>
                             <div class="tab-pane fade" id="stn4Pane">
                                 <div class="alert alert-primary border-primary shadow-sm"><i class="fa fa-box-open me-2"></i> Verify physical release to guard/borrower.</div>
-                                <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-primary"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="releasingTableBody"></tbody></table></div>
+                                <div class="table-responsive"><table class="table table-hover table-bordered align-middle bg-white shadow-sm"><thead class="table-primary"><tr><th>Ref ID</th><th>Borrower</th><th>Items</th><th>Destination</th><th>Project</th><th>Due Date</th><th class="text-center">Action</th></tr></thead><tbody id="releasingTableBody"></tbody></table></div>
                             </div>
                         </div>
                     </div>
@@ -620,6 +683,55 @@
                                 <hr class="my-4">
                                 <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-download me-2"></i>Export Operations</h6>
                                 <button id="exportInventoryBtn" class="btn btn-outline-primary w-100 py-2 fw-bold shadow-sm"><i class="fa fa-file-excel me-2"></i> DOWNLOAD PSA INVENTORY TO EXCEL</button>
+
+                                <hr class="my-4">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="fw-bold text-secondary mb-0"><i class="fa fa-boxes-stacked me-2"></i>PSA Inventory — Available Stocks</h6>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="window.loadMasterInventory()"><i class="fa fa-rotate-right me-1"></i> Refresh</button>
+                                </div>
+                                <!-- Available stocks summary by category -->
+                                <div id="inventoryStockSummary" class="row g-2 mb-3"></div>
+                                <!-- Smart Filters -->
+                                <div class="row g-2 mb-3">
+                                    <div class="col-md-5">
+                                        <input type="text" id="psaInvSearch" class="form-control form-control-sm" placeholder="Search serial, description, asset tag...">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select id="psaInvCategoryFilter" class="form-select form-select-sm">
+                                            <option value="all">All Categories</option>
+                                            <option value="Tablets">Tablets</option>
+                                            <option value="Laptops">Laptops</option>
+                                            <option value="Desktops">Desktops</option>
+                                            <option value="Monitors">Monitors</option>
+                                            <option value="Peripherals">Peripherals</option>
+                                            <option value="Others">Others</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <select id="psaInvStatusFilter" class="form-select form-select-sm">
+                                            <option value="all">All Statuses</option>
+                                            <option value="available">Available Only</option>
+                                            <option value="out">Out Only</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <!-- Full inventory browse table -->
+                                <div class="table-responsive border rounded shadow-sm custom-scrollbar" style="max-height: 500px;">
+                                    <table class="table table-sm table-hover table-bordered mb-0 bg-white">
+                                        <thead class="table-primary sticky-top">
+                                            <tr>
+                                                <th>Serial No.</th>
+                                                <th>Property No.</th>
+                                                <th>Description</th>
+                                                <th class="text-center">Asset Tag</th>
+                                                <th class="text-center">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="inventoryTableBody">
+                                            <tr><td colspan="5" class="text-center text-muted py-4">Click Refresh to load inventory.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
 
                             <!-- PHILSYS INVENTORY PANE (Uses separate logic at the bottom of this file) -->
@@ -644,6 +756,48 @@
                                 <hr class="my-4">
                                 <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-download me-2"></i>Export Operations</h6>
                                 <button id="philsysExportBtn" class="btn btn-outline-success w-100 py-2 fw-bold shadow-sm"><i class="fa fa-file-excel me-2"></i> DOWNLOAD PHILSYS INVENTORY TO EXCEL</button>
+
+                                <hr class="my-4">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="fw-bold text-secondary mb-0"><i class="fa fa-suitcase-rolling me-2"></i>PhilSys Kits — Browse & Filter</h6>
+                                    <button class="btn btn-sm btn-outline-success" onclick="window.loadPhilSysInventoryTable()"><i class="fa fa-rotate-right me-1"></i> Refresh</button>
+                                </div>
+                                <!-- Summary badges -->
+                                <div id="philsysStockSummary" class="mb-3"></div>
+                                <!-- Filters -->
+                                <div class="row g-2 mb-3">
+                                    <div class="col-md-8">
+                                        <input type="text" id="philsysInvSearch" class="form-control form-control-sm" placeholder="Search kit serial, laptop model, any serial number...">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select id="philsysInvStatusFilter" class="form-select form-select-sm">
+                                            <option value="all">All Statuses</option>
+                                            <option value="available">Available Only</option>
+                                            <option value="out">Out Only</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="table-responsive border rounded shadow-sm" style="max-height: 500px; overflow: auto;">
+                                    <table class="table table-sm table-hover table-bordered mb-0 bg-white" style="font-size:0.78rem; min-width:900px;">
+                                        <thead class="table-success sticky-top text-dark">
+                                            <tr>
+                                                <th>Kit Serial</th>
+                                                <th>Laptop Model</th>
+                                                <th>Laptop SN</th>
+                                                <th>Scanner SN</th>
+                                                <th>Iris SN</th>
+                                                <th>Webcam SN</th>
+                                                <th>Doc Scanner SN</th>
+                                                <th>Monitor SN</th>
+                                                <th>Printer SN</th>
+                                                <th class="text-center">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="philsysInvTableBody">
+                                            <tr><td colspan="10" class="text-center text-muted py-4">Click Refresh to load PhilSys kits.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1022,6 +1176,7 @@
     <script type="module">
         // Import isAnyAdmin to dynamically verify Admin privileges
         import { supabase, isAnyAdmin } from './config.js';
+        import { showConfirm } from './utils.js';
         
         // ==========================================
         // ADMIN UI PRIVILEGE CHECK & SCROLL SYNC
@@ -1212,7 +1367,7 @@
 
                         const tbody = document.getElementById('philsysImportBody');
                         tbody.innerHTML = '';
-                        philsysParsedData.forEach(row => {
+                        philsysParsedData.slice(0, 25).forEach(row => {
                             tbody.innerHTML += `<tr>
                                 <td>${row.kit_serial}</td>
                                 <td>${row.laptop_model}</td>
@@ -1225,6 +1380,9 @@
                                 <td>${row.printer_sn}</td>
                             </tr>`;
                         });
+                        if (philsysParsedData.length > 25) {
+                            tbody.innerHTML += `<tr><td colspan="9" class="text-center text-muted small py-2 bg-light">...and ${philsysParsedData.length - 25} more kits</td></tr>`;
+                        }
 
                         document.getElementById('philsysImportPreview').style.display = 'block';
                         saveBtn.style.display = 'block';
@@ -1237,6 +1395,7 @@
             if(saveBtn) {
                 saveBtn.addEventListener('click', async () => {
                     if(philsysParsedData.length === 0) return;
+                    if(!await showConfirm("Import PhilSys Inventory", `Import ${philsysParsedData.length} PhilSys kits into the system?`)) return;
                     saveBtn.disabled = true; 
                     saveBtn.innerText = 'Saving to Database...';
 
@@ -1264,16 +1423,30 @@
                     exportBtn.disabled = true;
                     exportBtn.innerText = 'Downloading...';
                     try {
-                        const { data, error } = await supabase.from('philsys_inventory').select('kit_serial, laptop_model, laptop_sn, scanner_sn, iris_sn, webcam_sn, doc_scanner_sn, monitor_sn, printer_sn');
-                        if(error) throw error;
-                        if(!data || data.length === 0) {
+                        let allData = [];
+                        let from = 0;
+                        const pageSize = 1000;
+                        while (true) {
+                            const { data, error } = await supabase
+                                .from('philsys_inventory')
+                                .select('kit_serial, laptop_model, laptop_sn, scanner_sn, iris_sn, webcam_sn, doc_scanner_sn, monitor_sn, printer_sn')
+                                .order('kit_serial', { ascending: true })
+                                .range(from, from + pageSize - 1);
+                            if(error) throw error;
+                            if(!data || data.length === 0) break;
+                            allData = allData.concat(data);
+                            if(data.length < pageSize) break;
+                            from += pageSize;
+                        }
+
+                        if(allData.length === 0) {
                             alert("No data found in PhilSys Inventory.");
                             exportBtn.disabled = false;
                             exportBtn.innerHTML = '<i class="fa fa-file-excel me-2"></i> DOWNLOAD PHILSYS INVENTORY TO EXCEL';
                             return;
                         }
 
-                        const ws = XLSX.utils.json_to_sheet(data);
+                        const ws = XLSX.utils.json_to_sheet(allData);
                         const wb = XLSX.utils.book_new();
                         XLSX.utils.book_append_sheet(wb, ws, "PhilSys_Kits");
                         XLSX.writeFile(wb, "PhilSys_Master_Inventory.xlsx");

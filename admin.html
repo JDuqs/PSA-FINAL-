@@ -14,23 +14,130 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
-        body { background-color: #f4f7f9; font-family: 'Segoe UI', sans-serif; }
-        .psa-header { background-color: #003399; color: white; padding: 15px 25px; border-bottom: 5px solid #ffcc00; display: flex; align-items: center; justify-content: space-between; }
-        .section-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-top: 20px; }
-        .btn-primary { background-color: #003399; border: none; }
-        
-        /* Modal Styling to match dashboard */
-        .modal-content { border: none; border-radius: 15px; }
-        .modal-header { border-bottom: none; padding-bottom: 0; }
-        .modal-footer { border-top: none; justify-content: center; padding-bottom: 25px; }
-        .confirm-icon { font-size: 3rem; color: #003399; margin-bottom: 15px; }
+        :root {
+            --psa-blue: #003399;
+            --psa-blue-dark: #002266;
+            --psa-blue-soft: #edf3ff;
+            --psa-yellow: #ffcc00;
+            --psa-ink: #173250;
+            --bg-gray: #f4f7f9;
+        }
+
+        body {
+            background:
+                radial-gradient(circle at top left, rgba(0, 51, 153, 0.08), transparent 28%),
+                linear-gradient(180deg, #f8fbff 0%, var(--bg-gray) 100%);
+            font-family: 'Segoe UI', sans-serif;
+            color: var(--psa-ink);
+        }
+
+        .psa-header {
+            background: linear-gradient(180deg, var(--psa-blue) 0%, var(--psa-blue-dark) 100%);
+            color: white;
+            padding: 18px 25px;
+            border-bottom: 5px solid var(--psa-yellow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            box-shadow: 0 8px 24px rgba(0, 34, 102, 0.14);
+            flex-wrap: wrap;
+        }
+
+        .psa-header-copy small {
+            display: block;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.78);
+            font-weight: 700;
+        }
+
+        .section-card {
+            background: rgba(255, 255, 255, 0.96);
+            padding: 25px;
+            border-radius: 18px;
+            box-shadow: 0 16px 36px rgba(0, 51, 153, 0.07);
+            margin-top: 22px;
+            border: 1px solid rgba(0, 51, 153, 0.08);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--psa-blue), #1950c2);
+            border: none;
+            font-weight: 700;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--psa-blue-dark), var(--psa-blue));
+        }
+
+        .btn-outline-light:hover {
+            color: var(--psa-blue);
+            background: white;
+        }
+
+        .table {
+            vertical-align: middle;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: #f6f9ff;
+        }
+
+        .table-warning {
+            --bs-table-bg: #fff5d8;
+            --bs-table-border-color: #f1df9d;
+        }
+
+        .table-light {
+            --bs-table-bg: #eef3fb;
+            --bs-table-border-color: #dbe4f1;
+        }
+
+        .form-control,
+        .form-select {
+            border-color: #d7e0f0;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+            border-color: var(--psa-blue);
+            box-shadow: 0 0 0 0.2rem rgba(0, 51, 153, 0.12);
+        }
+
+        .modal-content {
+            border: none;
+            border-radius: 18px;
+            box-shadow: 0 20px 40px rgba(0, 51, 153, 0.16);
+        }
+
+        .modal-header {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .modal-footer {
+            border-top: none;
+            justify-content: center;
+            padding-bottom: 25px;
+        }
+
+        .confirm-icon {
+            font-size: 3rem;
+            color: var(--psa-blue);
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
 
     <div class="psa-header">
-        <div class="d-flex align-items-center">
-            <h4 class="m-0 fw-bold">PSA Admin Administration</h4>
+        <div class="d-flex align-items-center gap-3">
+            <img src="PSA.png" alt="PSA Logo" style="height: 54px; filter: drop-shadow(0 0 2px rgba(255,255,255,0.2));">
+            <div class="psa-header-copy">
+                <small>Administrative Controls</small>
+                <h4 class="m-0 fw-bold">PSA Admin Administration</h4>
+            </div>
             <!-- NEW: Badge for Admin Page Header -->
             <span id="adminPageBadge" class="badge bg-danger rounded-pill ms-3 fs-6 shadow-sm" style="display:none;">0</span>
         </div>
@@ -62,6 +169,64 @@
                     <small class="text-muted mt-2 d-block">* Confirming a user will automatically create their account and profile.</small>
                 </div>
 
+                <!-- SUPER ADMIN: CREATE STATION ADMIN SECTION -->
+                <div id="stationAdminSection" class="section-card" style="display: none;">
+                    <h5 class="text-primary fw-bold mb-3"><i class="fa fa-users-gear me-2"></i>Current Admin Accounts</h5>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Role</th>
+                                    <th>Department</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                </tr>
+                            </thead>
+                            <tbody id="currentStationAdminsBody">
+                                <tr><td colspan="4" class="text-center text-muted py-3">Loading current station admins...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h5 class="text-primary fw-bold mb-4"><i class="fa fa-user-plus me-2"></i>Create Admin Account</i></h5>
+                    <form id="stationAdminForm">
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">Full Name *</label>
+                                <input type="text" id="adminFullName" class="form-control" placeholder="e.g. Juan D. Cruz" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Email Address *</label>
+                                <input type="email" id="adminEmail" class="form-control" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Admin Role / Department *</label>
+                                <select id="adminStation" class="form-select" required>
+                                    <option value="">Select Role</option>
+                                    <option value="station1">Station 1 - Property</option>
+                                    <option value="station2">Station 2 - Inspection</option>
+                                    <option value="station3">Station 3 - OIC</option>
+                                    <option value="station3approval">Station 3 - Approval Account</option>
+                                    <option value="viewer">Viewer Only - Read Only</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Password *</label>
+                                <input type="password" id="adminPassword" class="form-control" minlength="6" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Confirm Password *</label>
+                                <input type="password" id="adminConfirmPassword" class="form-control" minlength="6" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 mt-4 py-2 fw-bold">
+                            <i class="fa fa-user-plus me-2"></i>Create Admin
+                        </button>
+                    </form>
+                    <div id="adminCreateMsg" class="mt-3"></div>
+                    <small class="text-muted mt-3 d-block">* Only `admin@psa.gov.ph` can manage admin accounts. Use Station 3 - Approval Account for an additional approver that will not replace the OIC name in exports.</small>
+                </div>
+
             </div>
         </div>
     </div>
@@ -84,6 +249,55 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script type="module">
+      import { supabase, isSuperAdmin } from './config.js';
+      import * as auth from './auth.js';
+
+      // Show/hide station admin section
+      async function initSuperAdmin() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.email && isSuperAdmin(session.user.email)) {
+          document.getElementById('stationAdminSection').style.display = 'block';
+          auth.loadCurrentStationAdmins();
+        }
+        auth.loadRegistrationRequests();
+        auth.startAdminBadgeMonitor();
+      }
+
+      document.getElementById('stationAdminForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const fullName = form.querySelector('#adminFullName').value;
+        const email = form.querySelector('#adminEmail').value;
+        const password = form.querySelector('#adminPassword').value;
+        const confirmPass = form.querySelector('#adminConfirmPassword').value;
+        const station = form.querySelector('#adminStation').value;
+
+        if (password !== confirmPass) {
+          alert('Passwords do not match!');
+          return;
+        }
+
+        const btn = form.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin me-2"></i>Creating...';
+
+        try {
+          const result = await window.createStationAdmin(fullName, email, password, station);
+          alert(result?.message || 'Admin account updated successfully!');
+          auth.loadCurrentStationAdmins();
+          form.reset();
+        } catch (error) {
+          alert('Error: ' + error.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa fa-user-plus me-2"></i>Create Admin';
+        }
+      });
+
+      document.addEventListener('DOMContentLoaded', initSuperAdmin);
+    </script>
     <script type="module" src="app.js"></script>
 </body>
 </html>
