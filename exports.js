@@ -287,22 +287,70 @@ export async function exportGatePass() {
     doc.setFont("helvetica", "normal"); doc.text("Annex A", 195, 53, { align: 'right' }); 
 
     doc.setFont("helvetica", "bold"); doc.text("TO THE GUARD ON DUTY:", 15, 60);
-    
-    doc.setFont("helvetica", "normal");
-    let currentY = 70; let currentX = 15; const lineHeight = 7; const pageRightMargin = 195;
-    const drawUnderlined = (text, x, y) => { doc.text(text, x, y); const w = doc.getTextWidth(text); doc.line(x, y + 1, x + w, y + 1); return w; };
 
-    doc.text("Please allow ", currentX, currentY); currentX += doc.getTextWidth("Please allow ");
-    doc.setFont("helvetica", "bold"); currentX += drawUnderlined(firstItem.borrower.toUpperCase(), currentX, currentY);
-    doc.setFont("helvetica", "normal"); doc.text(" for the purpose of ", currentX, currentY); currentX += doc.getTextWidth(" for the purpose of ");
-    doc.setFont("helvetica", "bold"); currentX += drawUnderlined(firstItem.project || "Official Business", currentX, currentY);
-    
-    currentX = 15; currentY += lineHeight;
-    doc.setFont("helvetica", "normal"); doc.text("to bring out laptop equipment listed below from PSA Location to ", currentX, currentY);
-    currentX += doc.getTextWidth("to bring out laptop equipment listed below from PSA Location to ");
-    doc.setFont("helvetica", "bold"); currentX += drawUnderlined(firstItem.destination || "________________", currentX, currentY);
-    doc.setFont("helvetica", "normal"); doc.text(".", currentX, currentY);
-    
+    // Format due date
+    const dueDateStr = firstItem.due_date
+        ? new Date(firstItem.due_date).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+        : '________________';
+
+    // Build segments: alternating normal/bold inline text
+    const segments = [
+        { text: "Please allow ", bold: false },
+        { text: firstItem.borrower.toUpperCase(), bold: true },
+        { text: " to bring out property / equipment listed below from ", bold: false },
+        { text: "PSA NCR PSO V - FIELD OFFICE", bold: true },
+        { text: " to ", bold: false },
+        { text: firstItem.destination || "________________", bold: true },
+        { text: " for the purpose of ", bold: false },
+        { text: firstItem.project || "________________", bold: true },
+        { text: ", until ", bold: false },
+        { text: dueDateStr, bold: true },
+        { text: ".", bold: false },
+    ];
+
+    // Inline flow renderer — wraps at right margin, draws ONE continuous underline per bold segment
+    const LEFT = 15, RIGHT = 195, LINE_H = 7;
+    let currentY = 70, cx = LEFT;
+    doc.setFontSize(10);
+
+    segments.forEach(seg => {
+        doc.setFont("helvetica", seg.bold ? "bold" : "normal");
+
+        // Split into tokens keeping spaces so spacing is preserved
+        const words = seg.text.split(/(?<=\s)|(?=\s)/);
+
+        // Track underline spans: each time we wrap, close the current span and start a new one
+        let spanStartX = cx;
+        let spanY = currentY;
+
+        words.forEach(word => {
+            const ww = doc.getTextWidth(word);
+            const isSpace = word.trim() === '';
+
+            if (!isSpace && cx + ww > RIGHT) {
+                // Close underline span on current line before wrapping
+                if (seg.bold && cx > spanStartX) {
+                    doc.line(spanStartX, spanY + 1, cx, spanY + 1);
+                }
+                currentY += LINE_H;
+                cx = LEFT;
+                spanStartX = cx;
+                spanY = currentY;
+            }
+
+            doc.setFont("helvetica", seg.bold ? "bold" : "normal");
+            doc.text(word, cx, currentY);
+            cx += ww;
+        });
+
+        // Close the final underline span for this segment
+        if (seg.bold && cx > spanStartX) {
+            doc.line(spanStartX, spanY + 1, cx, spanY + 1);
+        }
+    });
+
+    currentY += LINE_H + 3;
+
     const formatTime = (t) => t ? new Date(t).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false}) : '';
     const tableBody = items.map(i => [i.description, i.serial, i.property_no || '', i.asset_no || '', i.destination, formatTime(i.time_out), i.time_return ? formatTime(i.time_return) : '']);
 
@@ -318,7 +366,7 @@ export async function exportGatePass() {
     });
 
     let finalY = doc.lastAutoTable.finalY + 10;
-    if (finalY + 120 > doc.internal.pageSize.height) { doc.addPage(); finalY = 20; }
+    if (finalY + 150 > doc.internal.pageSize.height) { doc.addPage(); finalY = 20; }
     doc.text("Remarks:", 15, finalY); finalY += 6; doc.line(15, finalY, 195, finalY); finalY += 8; doc.line(15, finalY, 195, finalY); finalY += 10;
 
     const drawSig = (name, title, x, y) => {
@@ -327,11 +375,11 @@ export async function exportGatePass() {
         doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(doc.splitTextToSize(title, w + 30), x, y + 6, { align: "center" });
     };
 
-    // Requested by — borrower signature line above Checked / Inspected by
+    // Requested by — centered, above Checked / Inspected by
     doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-    doc.text("Requested by:", 15, finalY);
+    doc.text("Requested by:", 105, finalY, { align: "center" });
     finalY += 15;
-    drawSig(borrowerName.toUpperCase(), "Signature over Printed Name", 55, finalY);
+    drawSig(borrowerName.toUpperCase(), "Signature over Printed Name", 105, finalY);
     finalY += 25;
 
     doc.setFont("helvetica", "bold"); doc.setFontSize(10);
@@ -341,7 +389,12 @@ export async function exportGatePass() {
     drawSig(approvers.inspection, "Inspection Officer", 150, finalY);
     finalY += 25; doc.text("Approved by:", 105, finalY - 12, { align: "center" });
     drawSig(approvers.oic, "Supervising Statistical Specialist\nOfficer-in-Charge, PSA NCR PSO V", 105, finalY);
-    finalY += 25; drawSig("", "Guard on Duty", 105, finalY);
+
+    // Guard on Duty — push to new page if it won't fit above the footer
+    finalY += 30;
+    const pageHeight = doc.internal.pageSize.height;
+    if (finalY + 20 > pageHeight - 30) { doc.addPage(); stampFooter(); finalY = 25; }
+    drawSig("", "Guard on Duty", 105, finalY);
 
     const pages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pages; i++) { doc.setPage(i); stampFooter(); }
@@ -366,87 +419,129 @@ export async function exportAckReceipt() {
     if (!await showConfirm("Export Receipt", `Generate Acknowledgement Receipt for ${borrowerName}?`)) return;
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
-    
+    const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4', compress: true });
+
+    // Landscape dimensions: 297 x 210mm
+    const PW = 297, PH = 210;
+    const LM = 15, RM = PW - 15, TW = RM - LM; // left margin, right margin, text width
+    const MID = PW / 2;
+
     const addFooter = (docInstance) => {
-        const pageWidth = docInstance.internal.pageSize.width;
-        const pageHeight = docInstance.internal.pageSize.height;
-        const footerY = pageHeight - 20;
-        docInstance.setLineWidth(0.5); docInstance.line(10, footerY - 5, pageWidth - 10, footerY - 5);
+        const footerY = PH - 20;
+        docInstance.setLineWidth(0.5); docInstance.line(LM, footerY - 5, RM, footerY - 5);
         docInstance.setFontSize(8); docInstance.setFont("helvetica", "normal"); docInstance.setTextColor(0, 0, 0);
-        docInstance.text("3rd Floor STWLPC Building, 335-338 Sen. Gil Puyat Avenue (Buendia)", pageWidth / 2, footerY, { align: "center" });
-        docInstance.text("Barangay 49 Zone 7, Pasay City Philippines 1300", pageWidth / 2, footerY + 4, { align: "center" });
-        docInstance.text("Telephone (632) 833-8284 • Telefax (632) 834-0051", pageWidth / 2, footerY + 8, { align: "center" });
-        docInstance.text("Email Address: ncr5@psa.gov.ph, Website: www.psa.gov.ph", pageWidth / 2, footerY + 12, { align: "center" });
+        docInstance.text("3rd Floor STWLPC Building, 335-338 Sen. Gil Puyat Avenue (Buendia)", MID, footerY, { align: "center" });
+        docInstance.text("Barangay 49 Zone 7, Pasay City Philippines 1300", MID, footerY + 4, { align: "center" });
+        docInstance.text("Telephone (632) 833-8284 • Telefax (632) 834-0051", MID, footerY + 8, { align: "center" });
+        docInstance.text("Email Address: ncr5@psa.gov.ph, Website: www.psa.gov.ph", MID, footerY + 12, { align: "center" });
+    };
+
+    // Justified text renderer
+    const drawJustified = (text, x, y, maxWidth, lineHeight) => {
+        const lines = doc.splitTextToSize(text, maxWidth);
+        lines.forEach((line, idx) => {
+            const isLast = idx === lines.length - 1;
+            if (isLast) {
+                // Last line: left-align
+                doc.text(line, x, y);
+            } else {
+                const words = line.trim().split(/\s+/);
+                if (words.length <= 1) { doc.text(line, x, y); }
+                else {
+                    const totalWordW = words.reduce((s, w) => s + doc.getTextWidth(w), 0);
+                    const gap = (maxWidth - totalWordW) / (words.length - 1);
+                    let cx = x;
+                    words.forEach(word => { doc.text(word, cx, y); cx += doc.getTextWidth(word) + gap; });
+                }
+            }
+            y += lineHeight;
+        });
+        return y;
     };
 
     try {
         doc.addImage("PSA.jpg", "JPEG", 15, 5, 25, 25, "psa", "FAST");
-        doc.addImage("BP.jpg", "JPEG", 170, 5, 25, 25, "bp", "FAST");
+        doc.addImage("BP.jpg", "JPEG", PW - 40, 5, 25, 25, "bp", "FAST");
     } catch(e) {}
 
     doc.setTextColor(0, 0, 0); 
-    doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.text("REPUBLIC OF THE PHILIPPINES", 105, 15, { align: "center" });
-    doc.setFontSize(11); doc.setFont("helvetica", "bold"); doc.text("PHILIPPINE STATISTICS AUTHORITY", 105, 20, { align: "center" });
-    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text("NCR - Provincial Statistical Office V", 105, 25, { align: "center" });
-    doc.text("Las Piñas Muntinlupa Parañaque Pasay", 105, 30, { align: "center" });
+    doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.text("REPUBLIC OF THE PHILIPPINES", MID, 15, { align: "center" });
+    doc.setFontSize(11); doc.setFont("helvetica", "bold"); doc.text("PHILIPPINE STATISTICS AUTHORITY", MID, 20, { align: "center" });
+    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text("NCR - Provincial Statistical Office V", MID, 25, { align: "center" });
+    doc.text("Las Piñas Muntinlupa Parañaque Pasay", MID, 30, { align: "center" });
 
     let currentY = 40;
     doc.setFont("helvetica", "normal"); doc.setFontSize(10);
     const refNo = items[0].unique_id || `PSA-${Math.floor(1000 + Math.random() * 9000)}`; 
-    doc.text(`Ref No.: ${refNo}`, 15, currentY);
+    doc.text(`Ref No.: ${refNo}`, LM, currentY);
     
     currentY += 10;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text("Acknowledgment Form", 105, currentY, { align: "center" }); currentY += 10;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text("Acknowledgment Form", MID, currentY, { align: "center" }); currentY += 10;
 
     doc.setFont("helvetica", "normal"); doc.setFontSize(10);
     const text1 = "All hired field-based personnel for the specified project listed below acknowledges the receipt of the following: a) tablet, b) accessories compatible case and adapter, and c) powerbank.";
     const text2 = "All personnel who were given these devices will be held liable for any acts of negligence and malicious intent resulting to the loss or damage of these tablets. Should there be a lost/damaged tablet, the responsible personnel should immediately inform the incident to their immediate supervisor. Upon the evaluation of the Philippine Statistics Authority (PSA) Provincial Statistical Office (PSO) Chief Statistical Specialist (CSS), an anticipated cost required to repair the damage in the tablet must be shouldered by the liable personnel. In the event that the tablet is lost, a salary deduction equivalent to the market value of the comparable device must be charged against the responsible personnel. Due to this, it is crucial to exercise caution and care to the equipment/device entrusted by the PSA to every field-based personnel for the successful and secure operationalization.";
     const text3 = "Affixing your name and signature in the next page signifies that you hereby acknowledge the receipt of the above-listed devices/items under your name and fully understand the responsibilities attached to these.";
     
-    const splitText1 = doc.splitTextToSize(text1, 180); doc.text(splitText1, 15, currentY);
-    currentY += (splitText1.length * 5) + 5;
-    const splitText2 = doc.splitTextToSize(text2, 180); doc.text(splitText2, 15, currentY);
-    currentY += (splitText2.length * 5) + 5;
-    const splitText3 = doc.splitTextToSize(text3, 180); doc.text(splitText3, 15, currentY);
-    currentY += (splitText3.length * 5) + 10;
+    currentY = drawJustified(text1, LM, currentY, TW, 5); currentY += 4;
+    currentY = drawJustified(text2, LM, currentY, TW, 5); currentY += 4;
+    currentY = drawJustified(text3, LM, currentY, TW, 5); currentY += 8;
     
-    doc.setFont("helvetica", "bold"); doc.text(`Project: ${projectName}`, 15, currentY); doc.text("Instructor: ___________________________", 15, currentY + 7);
+    doc.setFont("helvetica", "bold"); doc.text(`Project: ${projectName}`, LM, currentY); doc.text("Instructor: ___________________________", LM, currentY + 7);
     currentY += 15;
 
     const tableData = items.map((item, index) => {
-        const brand = (item.description && item.description.toLowerCase().includes('samsung')) ? "Samsung" : (item.description || "").split(' ')[0];
+        const desc = (item.description || "").toLowerCase();
+        const brand = desc.includes('samsung') ? "Samsung" : (item.description || "").split(' ')[0];
         return [index + 1, "", brand, item.serial, item.asset_no || "", "", "", ""];
     });
 
     const BOX_SIZE = 3.5; // mm — size of each checkbox square
-    const ACK_LABELS = ["Powerbank", "Type C Cable", "Adapter", "Compatible Case"];
     const ACK_LINE_H = BOX_SIZE + 2.5;
-    const ACK_TOTAL_H = ACK_LINE_H * (ACK_LABELS.length - 1) + BOX_SIZE;
+
+    // Per-item label sets based on device type
+    const LABELS_TABLET   = ["Powerbank", "Type C Cable", "Adapter", "Compatible Case"];
+    const LABELS_LAPTOP   = ["Power Cable", "Keyboard", "Mouse", "HDMI"];
+    const LABELS_DESKTOP  = ["Power Cable", "Keyboard", "Mouse", "HDMI"];
+
+    const getLabelsForItem = (item) => {
+        const d = (item.description || "").toLowerCase();
+        if (d.includes('laptop')) return LABELS_LAPTOP;
+        if (d.includes('desktop') || d.includes('cpu') || d.includes('computer')) return LABELS_DESKTOP;
+        return LABELS_TABLET; // default: tablets and everything else
+    };
+
+    // Pre-compute labels per row so didDrawCell can look them up by index
+    const rowLabels = items.map(item => getLabelsForItem(item));
+    const maxLabels = Math.max(...rowLabels.map(l => l.length));
+    const ACK_TOTAL_H = ACK_LINE_H * (maxLabels - 1) + BOX_SIZE;
     const drawnAckRows = new Set(); // prevent double-draw on page breaks
 
     doc.autoTable({
         startY: currentY,
         head: [["No.", "Name of Hired\nBased Personnel", "Tablet\nBrand", "Serial Number", "Asset Tag\nNo.", "With Powerbank\nand/or Accessories", "Signature", "Date of\nAcknowledgement"]],
         body: tableData, theme: 'grid',
-        margin: { bottom: 38 },
+        margin: { left: LM, right: LM, bottom: 38 },
         rowPageBreak: 'avoid',
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3, halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 8 },
         styles: { textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3, fontSize: 8, valign: 'middle', minCellHeight: ACK_TOTAL_H + 8 },
-        columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 55 }, 2: { cellWidth: 18 }, 3: { cellWidth: 28 }, 4: { cellWidth: 16, halign: 'center' }, 5: { cellWidth: 28, fontSize: 7 }, 6: { cellWidth: 20 }, 7: { cellWidth: 17 } },
+        // Landscape: 267mm usable — distribute generously to Name column
+        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 80 }, 2: { cellWidth: 22 }, 3: { cellWidth: 38 }, 4: { cellWidth: 20, halign: 'center' }, 5: { cellWidth: 35, fontSize: 7 }, 6: { cellWidth: 32 }, 7: { cellWidth: 30 } },
         didDrawPage: function (data) { addFooter(doc); },
         didDrawCell: function (data) {
             if (data.section !== 'body' || data.column.index !== 5) return;
-            if (drawnAckRows.has(data.row.index)) return; // skip duplicate on page break
+            if (drawnAckRows.has(data.row.index)) return;
             drawnAckRows.add(data.row.index);
 
+            const labels = rowLabels[data.row.index] || LABELS_TABLET;
+            const totalH = ACK_LINE_H * (labels.length - 1) + BOX_SIZE;
             const x = data.cell.x + 2;
-            const rawStartY = data.cell.y + (data.cell.height - ACK_TOTAL_H) / 2;
+            const rawStartY = data.cell.y + (data.cell.height - totalH) / 2;
             const safeStartY = Math.max(rawStartY, data.cell.y + 2);
 
             doc.setDrawColor(0); doc.setLineWidth(0.3);
             doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
-            ACK_LABELS.forEach((label, i) => {
+            labels.forEach((label, i) => {
                 const y = safeStartY + i * ACK_LINE_H;
                 doc.rect(x, y, BOX_SIZE, BOX_SIZE);
                 doc.text(label, x + BOX_SIZE + 1, y + BOX_SIZE - 0.5);
