@@ -42,7 +42,7 @@ function hasLegacyAdminEmail(userOrEmail) {
 
 function hasAdminDepartment(userOrEmail) {
     const dept = getDepartment(userOrEmail).toLowerCase();
-    return getRole(userOrEmail) === 'admin' && ['property', 'inspection', 'oic', 'station 3 approval', 'psa', 'viewer'].includes(dept);
+    return getRole(userOrEmail) === 'admin' && ['property', 'inspection', 'station 2 philsys', 'oic', 'station 3 approval', 'psa', 'viewer'].includes(dept);
 }
 
 export function isAnyAdmin(userOrEmail) {
@@ -68,12 +68,16 @@ export function isStation2Admin(userOrEmail) {
     return (getRole(userOrEmail) === 'admin' && getDepartment(userOrEmail).toLowerCase() === 'inspection') || getEmail(userOrEmail) === ADMIN_ROLES.STATION_2;
 }
 
+export function isStation2PhilSysAdmin(userOrEmail) {
+    return getRole(userOrEmail) === 'admin' && getDepartment(userOrEmail).toLowerCase() === 'station 2 philsys';
+}
+
 export function canHandleStation1(userOrEmail) {
     return isStation1Admin(userOrEmail) || isStation2Admin(userOrEmail);
 }
 
 export function canHandleStation2(userOrEmail) {
-    return isStation1Admin(userOrEmail) || isStation2Admin(userOrEmail);
+    return isStation1Admin(userOrEmail) || isStation2Admin(userOrEmail) || isStation2PhilSysAdmin(userOrEmail);
 }
 
 export function isStation3Admin(userOrEmail) {

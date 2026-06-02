@@ -120,6 +120,7 @@ export async function initDashboard(user) {
     const isViewerUser = config.isViewerAdmin(currentUser);
     const isStation1 = config.isStation1Admin(currentUser);
     const isStation2 = config.isStation2Admin(currentUser);
+    const isStation2PhilSys = config.isStation2PhilSysAdmin(currentUser);
     const isStation3 = config.isStation3Admin(currentUser);
     const isStation4 = config.isStation4Admin(currentUser);
     const userIsAdmin = config.isAnyAdmin(currentUser);
@@ -150,6 +151,12 @@ export async function initDashboard(user) {
         } 
         else if (isStation2) {
             const stn1El = document.getElementById('nav-stn1'); if(stn1El) stn1El.style.display = 'block';
+            const el = document.getElementById('nav-stn2'); if(el) el.style.display = 'block';
+            document.querySelector('#nav-stn2 button')?.classList.add('active');
+            document.getElementById('stn2Pane')?.classList.add('show', 'active');
+        }
+        else if (isStation2PhilSys) {
+            // PhilSys-only Station 2 — sees Station 2 tab only, data is filtered to PhilSys in data.js
             const el = document.getElementById('nav-stn2'); if(el) el.style.display = 'block';
             document.querySelector('#nav-stn2 button')?.classList.add('active');
             document.getElementById('stn2Pane')?.classList.add('show', 'active');

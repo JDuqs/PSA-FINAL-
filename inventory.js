@@ -1,5 +1,5 @@
 // Inventory, Cart, and Lookup Logic
-import { supabase, ADMIN_ROLES } from './config.js';
+import { supabase, ADMIN_ROLES, canManageFiles, isSuperAdmin } from './config.js';
 import { state } from './state.js';
 import { showConfirm } from './utils.js';
 
@@ -13,14 +13,23 @@ let cartPagination = {
 
 /**
  * Unified Category Detection based on keywords in description
+ * Checks for explicit [Category] prefix tag first, then falls back to keyword matching
  */
 export function detectItemCategory(description) {
-    const d = (description || "").toLowerCase();
-    if (d.includes('tablet') || d.includes('ipad') || d.includes('galaxy tab') || d.includes('lenovo tab') || d.includes(' tab ')) return 'Tablets';
-    if (d.includes('laptop') || d.includes('macbook') || d.includes('notebook') || d.includes('thinkpad') || d.includes('latitude') || d.includes('elitebook') || d.includes('probook') || d.includes('chromebook')) return 'Laptops';
-    if (d.includes('desktop') || d.includes('system unit') || d.includes('cpu') || d.includes('mac mini') || d.includes('imac') || d.includes('workstation') || d.includes('optiplex') || d.includes('all-in-one') || d.includes('aio')) return 'Desktops';
-    if (d.includes('monitor') || d.includes('display') || d.includes('screen') || d.includes('led monitor') || d.includes('lcd monitor')) return 'Monitors';
-    if (d.includes('printer') || d.includes('scanner') || d.includes('projector') || d.includes('keyboard') || d.includes('mouse') || d.includes('router') || d.includes('switch') || d.includes('webcam')) return 'Peripherals';
+    const d = (description || "");
+    // Check for explicit category tag set during import
+    const tagMatch = d.match(/^\[([^\]]+)\]/);
+    if (tagMatch) {
+        const tag = tagMatch[1].trim();
+        const valid = ['Tablets', 'Laptops', 'Desktops', 'Monitors', 'Peripherals', 'Others'];
+        if (valid.includes(tag)) return tag;
+    }
+    const dl = d.toLowerCase();
+    if (dl.includes('tablet') || dl.includes('ipad') || dl.includes('galaxy tab') || dl.includes('lenovo tab') || dl.includes(' tab ')) return 'Tablets';
+    if (dl.includes('laptop') || dl.includes('macbook') || dl.includes('notebook') || dl.includes('thinkpad') || dl.includes('latitude') || dl.includes('elitebook') || dl.includes('probook') || dl.includes('chromebook')) return 'Laptops';
+    if (dl.includes('desktop') || dl.includes('system unit') || dl.includes('cpu') || dl.includes('mac mini') || dl.includes('imac') || dl.includes('workstation') || dl.includes('optiplex') || dl.includes('all-in-one') || dl.includes('aio')) return 'Desktops';
+    if (dl.includes('monitor') || dl.includes('display') || dl.includes('screen') || dl.includes('led monitor') || dl.includes('lcd monitor')) return 'Monitors';
+    if (dl.includes('printer') || dl.includes('scanner') || dl.includes('projector') || dl.includes('keyboard') || dl.includes('mouse') || dl.includes('router') || dl.includes('switch') || dl.includes('webcam')) return 'Peripherals';
     return 'Others';
 }
 
@@ -492,6 +501,10 @@ export async function loadMasterInventory() {
             }).join('');
         }
 
+        // Show/hide the Action column header based on role
+        const deleteHeader = document.getElementById('invDeleteHeader');
+        if (deleteHeader) deleteHeader.style.display = isSuperAdmin(state.currentUser) ? '' : 'none';
+
         // Wire up filters (only once)
         const searchEl = document.getElementById('psaInvSearch');
         const catEl = document.getElementById('psaInvCategoryFilter');
@@ -516,6 +529,7 @@ window._renderPsaInventoryTable = function() {
     const search = (document.getElementById('psaInvSearch')?.value || '').toLowerCase();
     const cat = document.getElementById('psaInvCategoryFilter')?.value || 'all';
     const status = document.getElementById('psaInvStatusFilter')?.value || 'all';
+    const canDelete = isSuperAdmin(state.currentUser);
 
     const filtered = _psaInventoryCache.filter(item => {
         const isOut = state.borrowedSerials?.has(String(item.serial).trim());
@@ -530,7 +544,7 @@ window._renderPsaInventoryTable = function() {
     });
 
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No items match the current filters.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${canDelete ? 6 : 5}" class="text-center text-muted py-4">No items match the current filters.</td></tr>`;
         return;
     }
 
@@ -538,15 +552,65 @@ window._renderPsaInventoryTable = function() {
     filtered.forEach(item => {
         const isOut = state.borrowedSerials?.has(String(item.serial).trim());
         const badge = isOut ? '<span class="badge bg-danger">OUT</span>' : '<span class="badge bg-success">AVAILABLE</span>';
+        const deleteBtn = canDelete && !isOut
+            ? `<td class="text-center"><button class="btn btn-outline-danger btn-sm py-0" onclick="window.deleteInventoryItem('${item.id}','${encodeURIComponent(item.serial)}')"><i class="fa fa-trash"></i></button></td>`
+            : canDelete ? `<td class="text-center"><span class="text-muted small" title="Cannot delete — item is currently OUT">—</span></td>` : '';
         html += `<tr class="align-middle">
             <td class="font-monospace fw-bold">${item.serial}</td>
             <td>${item.property_no || '-'}</td>
             <td class="small">${item.description || '-'}</td>
             <td class="text-center"><span class="badge bg-light text-dark border">${item.asset_no || '-'}</span></td>
             <td class="text-center">${badge}</td>
+            ${deleteBtn}
         </tr>`;
     });
     tbody.innerHTML = html;
+};
+
+window.deleteInventoryItem = async function(itemId, encodedSerial) {
+    const serial = decodeURIComponent(encodedSerial);
+    if (!isSuperAdmin(state.currentUser)) return alert("Unauthorized: Only the Super Admin can delete inventory items.");
+
+    // Safety: block deletion if item is currently out
+    if (state.borrowedSerials?.has(serial.trim())) {
+        return alert(`Cannot delete "${serial}" — this item is currently OUT on an active gate pass.`);
+    }
+
+    if (!await showConfirm("Delete Inventory Item", `Permanently delete "${serial}" from the master inventory?\n\nThis cannot be undone.`)) return;
+
+    try {
+        const { error } = await supabase.from('inventory').delete().eq('id', itemId);
+        if (error) throw error;
+
+        // Remove from local cache and re-render without full reload
+        _psaInventoryCache = _psaInventoryCache.filter(i => i.id !== itemId);
+        window._renderPsaInventoryTable();
+
+        // Update summary cards
+        const summaryEl = document.getElementById('inventoryStockSummary');
+        if (summaryEl) {
+            const categoryOrder = ['Tablets', 'Laptops', 'Desktops', 'Monitors', 'Peripherals', 'Others'];
+            const catColors = { Tablets: 'primary', Laptops: 'info', Desktops: 'secondary', Monitors: 'warning', Peripherals: 'success', Others: 'dark' };
+            const catTotals = {}, catAvailable = {};
+            _psaInventoryCache.forEach(item => {
+                const cat = detectItemCategory(item.description);
+                catTotals[cat] = (catTotals[cat] || 0) + 1;
+                if (!state.borrowedSerials?.has(String(item.serial).trim()))
+                    catAvailable[cat] = (catAvailable[cat] || 0) + 1;
+            });
+            summaryEl.innerHTML = categoryOrder.filter(c => catTotals[c]).map(cat => {
+                const avail = catAvailable[cat] || 0, total = catTotals[cat] || 0;
+                const color = catColors[cat] || 'secondary';
+                return `<div class="col-6 col-md-4 col-lg-2">
+                    <div class="card border-${color} shadow-sm text-center py-2 px-1" style="cursor:pointer;" onclick="document.getElementById('psaInvCategoryFilter').value='${cat}';window._renderPsaInventoryTable()">
+                        <div class="fw-bold text-${color}" style="font-size:1.4rem;">${avail}</div>
+                        <div class="small text-muted">/ ${total} total</div>
+                        <div class="small fw-bold text-truncate">${cat}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+    } catch(e) { alert("Delete failed: " + e.message); }
 };
 
 export async function loadPhilSysInventoryTable() {
@@ -637,6 +701,95 @@ window._renderPhilSysInventoryTable = function(activeSerials) {
     }).join('');
 };
 
+// ==========================================
+// PHILSYS OTHER INVENTORY (philsyskit_other_inventory table)
+// ==========================================
+let _philsysOtherCache = [];
+
+window.loadPhilSysOtherInventory = async function() {
+    const tbody = document.getElementById('philsysOtherInvTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-success spinner-border-sm me-2"></div>Loading...</td></tr>';
+
+    try {
+        // Get active serials to show OUT status
+        const { data: activePasses } = await supabase.from('gate_passes')
+            .select('serial')
+            .in('status', ['PENDING_PROPERTY','PENDING_INSPECTION','PENDING_OIC','RELEASING','OUT']);
+        const activeSerials = new Set((activePasses || []).map(p => String(p.serial).trim()));
+
+        const { data, error } = await supabase
+            .from('philsyskit_other_inventory')
+            .select('*')
+            .order('serial', { ascending: true });
+        if (error) throw error;
+
+        _philsysOtherCache = data || [];
+
+        // Show/hide delete column for super admin
+        const delHeader = document.getElementById('philsysOtherDeleteHeader');
+        if (delHeader) delHeader.style.display = isSuperAdmin(state.currentUser) ? '' : 'none';
+
+        // Wire search (only once)
+        const searchEl = document.getElementById('philsysOtherSearch');
+        if (searchEl && !searchEl.dataset.wired) {
+            searchEl.dataset.wired = '1';
+            searchEl.addEventListener('input', () => window._renderPhilSysOtherTable(activeSerials));
+        }
+
+        window._renderPhilSysOtherTable(activeSerials);
+    } catch(e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Error: ${e.message}</td></tr>`;
+    }
+};
+
+window._renderPhilSysOtherTable = function(activeSerials) {
+    const tbody = document.getElementById('philsysOtherInvTableBody');
+    if (!tbody) return;
+    const search = (document.getElementById('philsysOtherSearch')?.value || '').toLowerCase();
+    const canDelete = isSuperAdmin(state.currentUser);
+
+    const filtered = _philsysOtherCache.filter(item => {
+        if (!search) return true;
+        return `${item.serial} ${item.description} ${item.asset_no} ${item.property_no}`.toLowerCase().includes(search);
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No items found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(item => {
+        const isOut = activeSerials?.has(String(item.serial).trim());
+        const badge = isOut ? '<span class="badge bg-danger">OUT</span>' : '<span class="badge bg-success">AVAILABLE</span>';
+        const deleteBtn = canDelete
+            ? `<td class="text-center"><button class="btn btn-outline-danger btn-sm py-0" onclick="window.deletePhilSysOtherItem('${item.id}','${encodeURIComponent(item.serial)}')"><i class="fa fa-trash"></i></button></td>`
+            : '';
+        return `<tr class="align-middle">
+            <td class="font-monospace fw-bold">${item.serial || ''}</td>
+            <td>${item.property_no || '—'}</td>
+            <td class="small">${item.description || '—'}</td>
+            <td class="text-center"><span class="badge bg-light text-dark border">${item.asset_no || '—'}</span></td>
+            <td class="text-center">${badge}</td>
+            ${deleteBtn}
+        </tr>`;
+    }).join('');
+};
+
+window.deletePhilSysOtherItem = async function(itemId, encodedSerial) {
+    const serial = decodeURIComponent(encodedSerial);
+    if (!isSuperAdmin(state.currentUser)) return alert("Unauthorized.");
+    if (!await showConfirm("Delete Item", `Permanently delete "${serial}" from PhilSys Other Inventory?\n\nThis cannot be undone.`)) return;
+    try {
+        const { error } = await supabase.from('philsyskit_other_inventory').delete().eq('id', itemId);
+        if (error) throw error;
+        _philsysOtherCache = _philsysOtherCache.filter(i => String(i.id) !== String(itemId));
+        // Re-render with the last known activeSerials — just re-call loadPhilSysOtherInventory to be safe
+        window.loadPhilSysOtherInventory();
+    } catch(e) { alert("Delete failed: " + e.message); }
+};
+
 export async function exportMasterInventoryExcel() {
     const btn = document.getElementById('exportInventoryBtn');
     const originalHtml = btn?.innerHTML;
@@ -724,16 +877,20 @@ function renderImportPreview(data) {
     const previewDiv = document.getElementById('importPreview');
     if(previewDiv) previewDiv.style.display = 'block';
 
+    const selectedCat = document.getElementById('importCategorySelect')?.value || '';
+
     let htmlBuffer = "";
     data.slice(0, 10).forEach(row => {
         const serial = String(row.serial || row.Serial || row['Serial No.'] || row['Serial Number'] || '');
         const desc = String(row.description || row.Description || row.desc || '');
         const asset = String(row.asset_no || row['Asset No'] || row['Asset Tag'] || row.asset || '');
         const prop = String(row.property_no || row['Property No'] || row['Property No.'] || '');
+        const cat = selectedCat || detectItemCategory(desc);
+        const catBadge = `<span class="badge bg-primary">${cat}</span>`;
         
-        htmlBuffer += `<tr><td>${serial}</td><td>${prop}</td><td>${desc}</td><td>${asset}</td></tr>`;
+        htmlBuffer += `<tr><td>${serial}</td><td>${prop}</td><td>${desc}</td><td>${asset}</td><td>${catBadge}</td></tr>`;
     });
-    if (data.length > 10) htmlBuffer += `<tr><td colspan="4" class="text-center text-muted small py-2 bg-light">...and ${data.length - 10} more items</td></tr>`;
+    if (data.length > 10) htmlBuffer += `<tr><td colspan="5" class="text-center text-muted small py-2 bg-light">...and ${data.length - 10} more items</td></tr>`;
     tbody.innerHTML = htmlBuffer;
 }
 
@@ -745,11 +902,17 @@ export async function saveBulkImport() {
         btn.innerText = "Saving to DB...";
     }
 
+    const selectedCat = document.getElementById('importCategorySelect')?.value || '';
+
     const formatted = state.tempImportData.map(row => {
+        const rawDesc = String(row.description || row.Description || row.desc || '').trim();
+        // Prefix with [Category] tag if user selected one, stripping any existing tag first
+        const cleanDesc = rawDesc.replace(/^\[[^\]]+\]\s*/, '');
+        const description = selectedCat ? `[${selectedCat}] ${cleanDesc}` : cleanDesc;
         return {
             serial: String(row.serial || row.Serial || row['Serial No.'] || row['Serial Number'] || '').trim(),
             property_no: String(row.property_no || row['Property No'] || row['Property No.'] || '').trim(),
-            description: String(row.description || row.Description || row.desc || '').trim(),
+            description,
             asset_no: String(row.asset_no || row['Asset No'] || row['Asset Tag'] || row.asset || '').trim()
         };
     }).filter(r => r.serial);
@@ -797,3 +960,4 @@ window.removeItem = removeItem;
 window.selectInventoryItem = selectInventoryItem;
 window.loadMasterInventory = loadMasterInventory;
 window.exportMasterInventoryExcel = exportMasterInventoryExcel;
+window.detectItemCategory = detectItemCategory;

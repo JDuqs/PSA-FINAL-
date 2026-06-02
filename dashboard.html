@@ -446,6 +446,26 @@
                                     <thead class="table-light"><tr><th>Serial</th><th>Property No.</th><th>Description</th><th>Asset</th><th class="text-center">Action</th></tr></thead>
                                     <tbody id="cartTableBody"><tr><td colspan="5" class="text-center text-muted py-3">Cart is empty</td></tr></tbody>
                                 </table>
+
+                                <!-- OTHER PHILSYS ITEMS PICKER (visible when PhilSys Kit tab is active) -->
+                                <div id="adminOtherItemsSection" class="mt-3 p-3 bg-light border border-success rounded shadow-sm" style="display:none;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="fw-bold text-success mb-0 small"><i class="fa fa-box me-1"></i> Add Other PhilSys Items to Request</label>
+                                        <button type="button" class="btn btn-sm btn-outline-success" id="btnAdminLoadOtherItems"><i class="fa fa-rotate-right me-1"></i> Load</button>
+                                    </div>
+                                    <input type="text" id="adminOtherItemSearch" class="form-control form-control-sm mb-2" placeholder="Search serial, description, asset...">
+                                    <div class="table-responsive border rounded bg-white" style="max-height: 220px; overflow-y:auto;">
+                                        <table class="table table-sm table-hover table-bordered mb-0">
+                                            <thead class="table-success sticky-top text-dark small">
+                                                <tr><th>Serial</th><th>Description</th><th>Asset Tag</th><th class="text-center">Action</th></tr>
+                                            </thead>
+                                            <tbody id="adminOtherItemLookupBody">
+                                                <tr><td colspan="4" class="text-center text-muted py-3 small">Click "Load" to see available items.</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
                                 <button id="issueBtn" class="btn btn-success w-100 py-3 fw-bold shadow mt-2" style="font-size: 1.1rem;" disabled>SUBMIT REQUEST</button>
                             </div>
                         </div>
@@ -582,10 +602,10 @@
                         <div class="tab-content">
                             <!-- Active Records -->
                             <div class="tab-pane fade show active" id="activeRecordsTab">
-                                <div class="d-flex justify-content-end mb-3">
+                                <div class="d-flex flex-wrap gap-2 justify-content-end mb-3">
                                     <div class="input-group shadow-sm" style="max-width: 350px;">
                                         <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-muted"></i></span>
-                                        <input type="text" id="tableSearch" class="form-control border-start-0" placeholder="Search Active Batches...">
+                                        <input type="text" id="tableSearch" class="form-control border-start-0" placeholder="Search by Gate Pass ID, Borrower, Serial...">
                                     </div>
                                 </div>
                                 <div class="table-responsive">
@@ -664,7 +684,21 @@
                             <!-- PSA INVENTORY PANE (Uses original app.js IDs) -->
                             <div class="tab-pane fade show active" id="psaInvPane">
                                 <div class="alert alert-primary border-primary shadow-sm mb-4">
-                                    <i class="fa fa-info-circle me-2"></i> Upload an Excel file (.xlsx) with columns: <b>serial_no</b>, <b>property_no</b>, <b>description</b>, <b>asset_no</b>. This saves directly to the PSA `inventory` table.
+                                    <i class="fa fa-info-circle me-2"></i> Upload an Excel file (.xlsx) with columns: <b>serial_no</b>, <b>property_no</b>, <b>description</b>, <b>asset_no</b>. This saves directly to the PSA <code>inventory</code> table.
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="fw-bold small mb-1"><i class="fa fa-tag me-1 text-primary"></i> Import Category <span class="text-danger">*</span></label>
+                                    <select id="importCategorySelect" class="form-select border-primary shadow-sm">
+                                        <option value="">— Auto-detect from description —</option>
+                                        <option value="Tablets">Tablets</option>
+                                        <option value="Laptops">Laptops</option>
+                                        <option value="Desktops">Desktops / CPUs</option>
+                                        <option value="Monitors">Monitors</option>
+                                        <option value="Peripherals">Peripherals</option>
+                                        <option value="Others">Others</option>
+                                    </select>
+                                    <div class="form-text">Selecting a category tags every imported item so they always appear under the correct group — even if the description doesn't contain keywords.</div>
                                 </div>
                                 
                                 <input type="file" id="inventoryFile" class="form-control form-control-lg mb-3 border-primary" accept=".xlsx">
@@ -673,7 +707,7 @@
                                 <div id="importPreview" class="table-responsive border rounded mb-3 shadow-sm border-primary custom-scrollbar" style="max-height: 300px; display:none;">
                                     <table class="table table-sm table-striped mb-0 bg-white text-nowrap">
                                         <thead class="table-primary sticky-header">
-                                            <tr><th>Serial</th><th>Property No.</th><th>Description</th><th>Asset</th></tr>
+                                            <tr><th>Serial</th><th>Property No.</th><th>Description</th><th>Asset</th><th>Category</th></tr>
                                         </thead>
                                         <tbody id="importBody"></tbody>
                                     </table>
@@ -725,6 +759,7 @@
                                                 <th>Description</th>
                                                 <th class="text-center">Asset Tag</th>
                                                 <th class="text-center">Status</th>
+                                                <th class="text-center" id="invDeleteHeader">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody id="inventoryTableBody">
@@ -795,6 +830,64 @@
                                         </thead>
                                         <tbody id="philsysInvTableBody">
                                             <tr><td colspan="10" class="text-center text-muted py-4">Click Refresh to load PhilSys kits.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <hr class="my-4">
+                                <!-- MANUAL INDIVIDUAL ITEM ENTRY FOR PHILSYS -->
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="fw-bold text-secondary mb-0"><i class="fa fa-plus-circle me-2 text-success"></i>Add Individual PhilSys Item</h6>
+                                </div>
+                                <div class="alert alert-success border-success shadow-sm small mb-3">
+                                    <i class="fa fa-info-circle me-1"></i> Use this to manually add standalone items (tablets, peripherals, etc.) that are not part of a Luggage Kit. They will appear in the PhilSys browse table and can be requested from the PhilSys dashboard.
+                                </div>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold">Serial No. <span class="text-danger">*</span></label>
+                                        <input type="text" id="philsysManualSerial" class="form-control border-success" placeholder="e.g. R92X40Q6KAB">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold">Property No.</label>
+                                        <input type="text" id="philsysManualPropertyNo" class="form-control" placeholder="e.g. 2025-357220">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="small fw-bold">Description <span class="text-danger">*</span></label>
+                                        <input type="text" id="philsysManualDesc" class="form-control" placeholder="e.g. Samsung Tablet SM-X210 Galaxy Tab A9+">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="small fw-bold">Asset Tag</label>
+                                        <input type="text" id="philsysManualAsset" class="form-control" placeholder="e.g. 357220">
+                                    </div>
+                                </div>
+                                <button id="btnSavePhilSysManualItem" class="btn btn-success w-100 fw-bold py-2 shadow-sm">
+                                    <i class="fa fa-save me-2"></i> SAVE ITEM TO PHILSYS DATABASE
+                                </button>
+                                <div id="philsysManualItemMsg" class="mt-2"></div>
+
+                                <!-- PhilSys Other Inventory Browse Table -->
+                                <div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+                                    <h6 class="fw-bold text-secondary mb-0"><i class="fa fa-list me-2"></i>PhilSys Other Inventory</h6>
+                                    <button class="btn btn-sm btn-outline-success" onclick="window.loadPhilSysOtherInventory()"><i class="fa fa-rotate-right me-1"></i> Refresh</button>
+                                </div>
+                                <div class="input-group mb-2" style="max-width:400px;">
+                                    <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-muted"></i></span>
+                                    <input type="text" id="philsysOtherSearch" class="form-control border-start-0 form-control-sm" placeholder="Search serial, description, asset...">
+                                </div>
+                                <div class="table-responsive border rounded shadow-sm" style="max-height: 400px; overflow-y:auto;">
+                                    <table class="table table-sm table-hover table-bordered mb-0 bg-white">
+                                        <thead class="table-success sticky-top text-dark">
+                                            <tr>
+                                                <th>Serial No.</th>
+                                                <th>Property No.</th>
+                                                <th>Description</th>
+                                                <th class="text-center">Asset Tag</th>
+                                                <th class="text-center">Status</th>
+                                                <th class="text-center" id="philsysOtherDeleteHeader" style="display:none;">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="philsysOtherInvTableBody">
+                                            <tr><td colspan="6" class="text-center text-muted py-4">Click Refresh to load items.</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -922,31 +1015,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body bg-light p-4">
-                    <!-- Bulk Auto-Add Container -->
-                    <div id="inventoryBulkSection" class="bg-white p-3 mb-4 rounded border shadow-sm">
-                        <label class="small fw-bold text-success mb-2"><i class="fa fa-layer-group me-1"></i>SMART BULK AUTO-ADD</label>
-                        <div class="row g-2 mb-2">
-                            <div class="col-sm-6">
-                                <select id="bulkCategorySelect" class="form-select border-success">
-                                    <option value="" selected>Any Category...</option>
-                                    <option value="Tablets">Tablets</option>
-                                    <option value="Laptops">Laptops</option>
-                                    <option value="Desktops">Desktops/CPUs</option>
-                                    <option value="Monitors">Monitors</option>
-                                    <option value="Peripherals">Peripherals</option>
-                                </select>
-                            </div>
-                            <div class="col-sm-6">
-                                <input type="text" id="bulkBrandInput" class="form-control border-success" placeholder="Specific Brand (e.g. Samsung)">
-                            </div>
-                        </div>
-                        <div class="input-group mt-2">
-                            <span class="input-group-text bg-white border-success fw-bold">Qty:</span>
-                            <input type="number" id="bulkQtyInput" class="form-control border-success text-center" value="1" min="1" max="50" style="max-width: 100px;">
-                            <button id="btnBulkAdd" class="btn btn-success fw-bold px-4"><i class="fa fa-plus me-1"></i> Auto-Add</button>
-                        </div>
-                        <div id="bulkStatusMsg" class="small text-muted mt-2 fst-italic">Select a type, optionally type a brand, and choose quantity.</div>
-                    </div>
 
                     <div class="mb-3 d-flex gap-2 align-items-center">
                         <span class="fw-bold text-secondary text-nowrap"><i class="fa fa-filter me-1"></i>Filter Search:</span>
@@ -1168,6 +1236,82 @@
                         }, 100);
                     });
                 }
+
+                // Show/hide Other Items section when PhilSys Kit tab is toggled
+                const philsysTabBtn = document.querySelector('[data-bs-target="#philsysItemPane"]');
+                const psaTabBtn = document.querySelector('[data-bs-target="#psaItemPane"]');
+                const otherSection = document.getElementById('adminOtherItemsSection');
+                if (philsysTabBtn && otherSection) {
+                    philsysTabBtn.addEventListener('shown.bs.tab', () => { otherSection.style.display = 'block'; });
+                }
+                if (psaTabBtn && otherSection) {
+                    psaTabBtn.addEventListener('shown.bs.tab', () => { otherSection.style.display = 'none'; });
+                }
+
+                // OTHER PHILSYS ITEMS — load & add to cart
+                let _adminOtherItemsCache = [];
+
+                const renderAdminOtherItems = () => {
+                    const search = (document.getElementById('adminOtherItemSearch')?.value || '').toLowerCase();
+                    const tbody = document.getElementById('adminOtherItemLookupBody');
+                    if (!tbody) return;
+                    const filtered = _adminOtherItemsCache.filter(i =>
+                        !search || `${i.serial} ${i.description} ${i.asset_no} ${i.property_no}`.toLowerCase().includes(search)
+                    );
+                    if (filtered.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3 small">No available items found.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = filtered.map(i => `
+                        <tr>
+                            <td class="small font-monospace fw-bold">${i.serial}</td>
+                            <td class="small">${i.description || '—'}</td>
+                            <td class="small text-center">${i.asset_no || '—'}</td>
+                            <td class="text-center">
+                                <button class="btn btn-success btn-sm py-0 fw-bold"
+                                    onclick="window._adminAddOtherItemToCart('${encodeURIComponent(i.serial)}','${encodeURIComponent(i.description||'')}','${encodeURIComponent(i.property_no||'')}','${encodeURIComponent(i.asset_no||'')}')">
+                                    <i class="fa fa-plus me-1"></i>Add
+                                </button>
+                            </td>
+                        </tr>`).join('');
+                };
+
+                const btnAdminLoad = document.getElementById('btnAdminLoadOtherItems');
+                if (btnAdminLoad) {
+                    btnAdminLoad.addEventListener('click', async () => {
+                        const tbody = document.getElementById('adminOtherItemLookupBody');
+                        if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center py-2 small"><i class="fa fa-spinner fa-spin me-1"></i>Loading...</td></tr>';
+                        try {
+                            const { supabase } = await import('./config.js');
+                            const { data: active } = await supabase.from('gate_passes')
+                                .select('serial')
+                                .in('status', ['PENDING_PROPERTY','PENDING_INSPECTION','PENDING_OIC','RELEASING','OUT']);
+                            const outSet = new Set((active || []).map(r => String(r.serial).trim()));
+                            const { data, error } = await supabase
+                                .from('philsyskit_other_inventory')
+                                .select('*')
+                                .order('serial', { ascending: true });
+                            if (error) throw error;
+                            _adminOtherItemsCache = (data || []).filter(i => !outSet.has(String(i.serial).trim()));
+                            renderAdminOtherItems();
+                        } catch(e) {
+                            const tbody = document.getElementById('adminOtherItemLookupBody');
+                            if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-2 small">Error: ${e.message}</td></tr>`;
+                        }
+                    });
+                }
+
+                const adminSearch = document.getElementById('adminOtherItemSearch');
+                if (adminSearch) adminSearch.addEventListener('input', renderAdminOtherItems);
+
+                window._adminAddOtherItemToCart = (encSerial, encDesc, encProp, encAsset) => {
+                    const addBtn = document.getElementById('addToCartBtn');
+                    document.getElementById('serial').value = decodeURIComponent(encSerial);
+                    document.getElementById('propertyNum').value = decodeURIComponent(encProp) || 'N/A';
+                    document.getElementById('desc').value = decodeURIComponent(encDesc);
+                    document.getElementById('asset').value = decodeURIComponent(encAsset) || '';
+                    if (addBtn) addBtn.click();
+                };
             }, 500); 
         });
     </script>
@@ -1234,6 +1378,54 @@
             const processBtn = document.getElementById('philsysProcessImportBtn');
             const saveBtn = document.getElementById('philsysSaveBulkBtn');
             const exportBtn = document.getElementById('philsysExportBtn');
+
+            // ==========================================
+            // MANUAL INDIVIDUAL ITEM SAVE → philsyskit_other_inventory
+            // ==========================================
+            const btnSaveManual = document.getElementById('btnSavePhilSysManualItem');
+            if (btnSaveManual) {
+                btnSaveManual.addEventListener('click', async () => {
+                    const serial = document.getElementById('philsysManualSerial').value.trim();
+                    const propertyNo = document.getElementById('philsysManualPropertyNo').value.trim();
+                    const description = document.getElementById('philsysManualDesc').value.trim();
+                    const assetNo = document.getElementById('philsysManualAsset').value.trim();
+                    const msgEl = document.getElementById('philsysManualItemMsg');
+
+                    if (!serial) { msgEl.innerHTML = '<div class="alert alert-danger py-2 small">Serial No. is required.</div>'; return; }
+                    if (!description) { msgEl.innerHTML = '<div class="alert alert-danger py-2 small">Description is required.</div>'; return; }
+
+                    if (!await showConfirm("Save Item", `Save "${serial}" to PhilSys Other Inventory?`)) return;
+
+                    btnSaveManual.disabled = true;
+                    btnSaveManual.innerHTML = '<i class="fa fa-spinner fa-spin me-2"></i>Saving...';
+
+                    try {
+                        // Save to dedicated philsyskit_other_inventory table
+                        const { error } = await supabase.from('philsyskit_other_inventory').upsert({
+                            serial,
+                            property_no: propertyNo || null,
+                            description,
+                            asset_no: assetNo || null
+                        }, { onConflict: 'serial' });
+
+                        if (error) throw error;
+
+                        msgEl.innerHTML = `<div class="alert alert-success py-2 small"><i class="fa fa-check-circle me-1"></i> "${serial}" saved to PhilSys Other Inventory.</div>`;
+
+                        ['philsysManualSerial','philsysManualPropertyNo','philsysManualDesc','philsysManualAsset']
+                            .forEach(id => { document.getElementById(id).value = ''; });
+
+                        if (window.loadPhilSysOtherInventory) window.loadPhilSysOtherInventory();
+
+                        setTimeout(() => { msgEl.innerHTML = ''; }, 4000);
+                    } catch(e) {
+                        msgEl.innerHTML = `<div class="alert alert-danger py-2 small">Error: ${e.message}</div>`;
+                    } finally {
+                        btnSaveManual.disabled = false;
+                        btnSaveManual.innerHTML = '<i class="fa fa-save me-2"></i> SAVE ITEM TO PHILSYS DATABASE';
+                    }
+                });
+            }
             
             const btnOpenPhilSysLookup = document.getElementById('btnOpenPhilSysLookup');
             const philsysLookupModalElement = document.getElementById('philsysLookupModal');

@@ -844,7 +844,8 @@ export function renderTable(type) {
                    g.items.some(i => [i.serial, i.description].some(v => v && String(v).toLowerCase().includes(term)));
         });
     }
-    groupArray.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Sort by Gate Pass ID descending (newest number first) instead of date
+    groupArray.sort((a, b) => String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true }));
 
     const totalItems = groupArray.length;
     const totalPages = Math.ceil(totalItems / s.limit);

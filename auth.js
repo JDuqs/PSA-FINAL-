@@ -341,7 +341,8 @@ export async function loadCurrentStationAdmins() {
 
     const stationRows = [
         { role: 'Station 1', department: 'Property' },
-        { role: 'Station 2', department: 'Inspection' },
+        { role: 'Station 2 - Inspection (PSA)', department: 'Inspection' },
+        { role: 'Station 2 - Inspection (PhilSys)', department: 'Station 2 PhilSys' },
         { role: 'Station 3', department: 'OIC' },
         { role: 'Station 3 Approval', department: 'Station 3 Approval' }
     ];
@@ -453,6 +454,7 @@ function updateBadges(count) {
 const STATION_DEPTS = {
   'station1': { dept: 'Property' },
   'station2': { dept: 'Inspection' },
+  'station2philsys': { dept: 'Station 2 PhilSys' },
   'station3': { dept: 'OIC' },
   'station3approval': { dept: 'Station 3 Approval' },
   'viewer': { dept: 'Viewer' }

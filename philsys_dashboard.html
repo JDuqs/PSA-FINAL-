@@ -367,6 +367,7 @@
                                 
                                 <ul class="nav nav-pills mb-4 border-bottom pb-2" id="issueTabs" role="tablist">
                                     <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#manualEntry">Luggage Kit Entry</button></li>
+                                    <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#individualItemEntry"><i class="fa fa-box me-1"></i> Other Items</button></li>
                                     <!-- Bulk Import hidden for Kit Entry style, but ID kept so app.js doesn't crash -->
                                     <li class="nav-item" id="bulkImportNav" style="display:none;"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#bulkImport">Bulk Inventory</button></li>
                                 </ul>
@@ -463,11 +464,51 @@
                                             <thead class="table-light"><tr><th>Kit Serial No.</th><th>Property No.</th><th>Kit Components (Details)</th><th>Asset</th><th class="text-center">Action</th></tr></thead>
                                             <tbody id="cartTableBody"><tr><td colspan="5" class="text-center text-muted py-3">Cart is empty</td></tr></tbody>
                                         </table>
-                                        
-                                        <!-- Unified Cart Actions -->
-                                        <button type="button" id="issueBtn" class="btn btn-success w-100 fw-bold shadow-sm py-3 mt-2" style="font-size: 1.1rem;" disabled>
+
+                                        <!-- OTHER PHILSYS ITEMS PICKER — inline below the cart -->
+                                        <div class="mt-3 p-3 bg-light border border-success rounded shadow-sm">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <label class="fw-bold text-success mb-0 small"><i class="fa fa-box me-1"></i> Add Other PhilSys Items to Request</label>
+                                                <button type="button" class="btn btn-sm btn-outline-success" id="btnLoadOtherItems"><i class="fa fa-rotate-right me-1"></i> Load</button>
+                                            </div>
+                                            <input type="text" id="otherItemSearch" class="form-control form-control-sm mb-2" placeholder="Search serial, description, asset...">
+                                            <div class="table-responsive border rounded bg-white" style="max-height: 220px; overflow-y:auto;">
+                                                <table class="table table-sm table-hover table-bordered mb-0">
+                                                    <thead class="table-success sticky-top text-dark small">
+                                                        <tr><th>Serial</th><th>Description</th><th>Asset Tag</th><th class="text-center">Action</th></tr>
+                                                    </thead>
+                                                    <tbody id="otherItemLookupBody">
+                                                        <tr><td colspan="4" class="text-center text-muted py-3 small">Click "Load" to see available items.</td></tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <button type="button" id="issueBtn" class="btn btn-success w-100 fw-bold shadow-sm py-3 mt-3" style="font-size: 1.1rem;" disabled>
                                             <i class="fa fa-paper-plane me-2"></i> SUBMIT REQUEST
                                         </button>
+                                    </div>
+
+                                    <!-- OTHER ITEMS (philsyskit_other_inventory) -->
+                                    <div class="tab-pane fade" id="individualItemEntry">
+                                        <div class="p-3 bg-light border rounded border-success mb-3">
+                                            <label class="fw-bold text-success mb-2"><i class="fa fa-box me-1"></i> Other PhilSys Items</label>
+                                            <p class="small text-muted mb-2">Select from available non-kit PhilSys items to add to this request.</p>
+                                            <div class="input-group mb-2">
+                                                <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-muted"></i></span>
+                                                <input type="text" id="otherItemSearch" class="form-control border-start-0" placeholder="Search serial, description, asset tag...">
+                                            </div>
+                                            <div class="table-responsive border rounded bg-white" style="max-height: 300px; overflow-y:auto;">
+                                                <table class="table table-sm table-hover table-bordered mb-0">
+                                                    <thead class="table-success sticky-top text-dark">
+                                                        <tr><th>Serial</th><th>Description</th><th>Asset Tag</th><th>Property No.</th><th class="text-center">Action</th></tr>
+                                                    </thead>
+                                                    <tbody id="otherItemLookupBody">
+                                                        <tr><td colspan="5" class="text-center text-muted py-3">Loading available items...</td></tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <!-- Bulk Import (Hidden stub structure to keep app.js happy) -->
@@ -1041,6 +1082,83 @@
                         setTimeout(clearPhilSysFields, 100);
                     });
                 }
+
+                // =============================================
+                // OTHER PHILSYS ITEMS — load from philsyskit_other_inventory and add to cart
+                // =============================================
+                let _otherItemsCache = [];
+
+                const renderOtherItems = () => {
+                    const search = (document.getElementById('otherItemSearch')?.value || '').toLowerCase();
+                    const tbody = document.getElementById('otherItemLookupBody');
+                    if (!tbody) return;
+
+                    const filtered = _otherItemsCache.filter(i =>
+                        !search || `${i.serial} ${i.description} ${i.asset_no} ${i.property_no}`.toLowerCase().includes(search)
+                    );
+
+                    if (filtered.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3 small">No available items found.</td></tr>';
+                        return;
+                    }
+
+                    tbody.innerHTML = filtered.map(i => `
+                        <tr>
+                            <td class="small font-monospace fw-bold">${i.serial}</td>
+                            <td class="small">${i.description || '—'}</td>
+                            <td class="small text-center">${i.asset_no || '—'}</td>
+                            <td class="text-center">
+                                <button class="btn btn-success btn-sm py-0 fw-bold"
+                                    onclick="window._addOtherItemToCart('${encodeURIComponent(i.serial)}','${encodeURIComponent(i.description||'')}','${encodeURIComponent(i.property_no||'')}','${encodeURIComponent(i.asset_no||'')}')">
+                                    <i class="fa fa-plus me-1"></i>Add
+                                </button>
+                            </td>
+                        </tr>`).join('');
+                };
+
+                // Load button
+                const btnLoad = document.getElementById('btnLoadOtherItems');
+                if (btnLoad) {
+                    btnLoad.addEventListener('click', async () => {
+                        const tbody = document.getElementById('otherItemLookupBody');
+                        if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center py-2 small"><i class="fa fa-spinner fa-spin me-1"></i>Loading...</td></tr>';
+
+                        try {
+                            // Fetch from Supabase via the global client
+                            const { supabase } = await import('./config.js');
+                            // Get active serials to exclude OUT items
+                            const { data: active } = await supabase.from('gate_passes')
+                                .select('serial')
+                                .in('status', ['PENDING_PROPERTY','PENDING_INSPECTION','PENDING_OIC','RELEASING','OUT']);
+                            const outSet = new Set((active || []).map(r => String(r.serial).trim()));
+
+                            const { data, error } = await supabase
+                                .from('philsyskit_other_inventory')
+                                .select('*')
+                                .order('serial', { ascending: true });
+                            if (error) throw error;
+
+                            _otherItemsCache = (data || []).filter(i => !outSet.has(String(i.serial).trim()));
+                            renderOtherItems();
+                        } catch(e) {
+                            const tbody = document.getElementById('otherItemLookupBody');
+                            if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-2 small">Error: ${e.message}</td></tr>`;
+                        }
+                    });
+                }
+
+                // Search filter
+                const otherSearch = document.getElementById('otherItemSearch');
+                if (otherSearch) otherSearch.addEventListener('input', renderOtherItems);
+
+                // Add to cart handler
+                window._addOtherItemToCart = (encSerial, encDesc, encProp, encAsset) => {
+                    document.getElementById('serial').value = decodeURIComponent(encSerial);
+                    document.getElementById('propertyNum').value = decodeURIComponent(encProp) || 'N/A';
+                    document.getElementById('desc').value = decodeURIComponent(encDesc);
+                    document.getElementById('asset').value = decodeURIComponent(encAsset) || '';
+                    if (realAddToCartBtn) realAddToCartBtn.click();
+                };
             }, 500); 
         });
     </script>

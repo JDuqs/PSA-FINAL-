@@ -780,7 +780,7 @@ export async function processImportFile() {
             
             let rawData = json.map(row => ({
                 serial: String(row['serial_no'] || row['Serial'] || row['serial'] || "").trim(),
-                description: row['description'] || row['Description'],
+                description: String(row['description'] || row['Description'] || "").trim(),
                 asset_no: String(row['asset_no'] || row['Asset'] || row['Asset No'] || row['asset'] || ""),
                 property_no: String(row['property_no'] || row['Property'] || row['Property No'] || row['property'] || "")
             })).filter(x => x.serial);
@@ -788,15 +788,28 @@ export async function processImportFile() {
             const uniqueMap = new Map(); 
             rawData.forEach(item => { uniqueMap.set(item.serial, item); });
             state.bulkImportData = Array.from(uniqueMap.values());
+
+            // Read selected category for preview
+            const selectedCat = document.getElementById('importCategorySelect')?.value || '';
             
             const tbody = document.getElementById('importBody'); 
             if (tbody) {
                 tbody.innerHTML = "";
-                state.bulkImportData.slice(0, 25).forEach(d => { 
-                    tbody.innerHTML += `<tr><td>${d.serial}</td><td>${d.property_no || '-'}</td><td>${d.description || '-'}</td><td>${d.asset_no || '-'}</td></tr>`; 
+                state.bulkImportData.slice(0, 25).forEach(d => {
+                    // Strip any existing tag then apply selected category
+                    const cleanDesc = d.description.replace(/^\[[^\]]+\]\s*/, '');
+                    const displayCat = selectedCat || (window.detectItemCategory ? window.detectItemCategory(cleanDesc) : '—');
+                    const badgeColor = selectedCat ? 'primary' : 'secondary';
+                    tbody.innerHTML += `<tr>
+                        <td>${d.serial}</td>
+                        <td>${d.property_no || '-'}</td>
+                        <td>${cleanDesc || '-'}</td>
+                        <td>${d.asset_no || '-'}</td>
+                        <td><span class="badge bg-${badgeColor}">${displayCat}</span></td>
+                    </tr>`; 
                 });
                 if (state.bulkImportData.length > 25) {
-                    tbody.innerHTML += `<tr><td colspan="4" class="text-center text-muted small py-2 bg-light">...and ${state.bulkImportData.length - 25} more items</td></tr>`;
+                    tbody.innerHTML += `<tr><td colspan="5" class="text-center text-muted small py-2 bg-light">...and ${state.bulkImportData.length - 25} more items</td></tr>`;
                 }
             }
             
@@ -824,6 +837,8 @@ export async function saveBulkImport() {
     if(!state.bulkImportData || state.bulkImportData.length === 0) return;
     if(!await showConfirm("Import", `Save ${state.bulkImportData.length} items to Master Inventory?`)) return;
     
+    const selectedCat = document.getElementById('importCategorySelect')?.value || '';
+    
     const CHUNK_SIZE = 1000;
     const btn = document.getElementById('saveBulkBtn');
     const originalText = btn.innerHTML;
@@ -832,7 +847,14 @@ export async function saveBulkImport() {
 
     try {
         for (let i = 0; i < state.bulkImportData.length; i += CHUNK_SIZE) {
-            const chunk = state.bulkImportData.slice(i, i + CHUNK_SIZE);
+            const chunk = state.bulkImportData.slice(i, i + CHUNK_SIZE).map(item => {
+                if (selectedCat) {
+                    // Strip any existing tag then prepend the chosen category
+                    const cleanDesc = String(item.description || '').replace(/^\[[^\]]+\]\s*/, '');
+                    return { ...item, description: `[${selectedCat}] ${cleanDesc}` };
+                }
+                return item;
+            });
             const { error } = await supabase.from('inventory').upsert(chunk, { onConflict: 'serial' });
             
             if(error) {
